@@ -30,6 +30,8 @@ public final class AgentVillage {
     private final Location center;
     private final Map<String, AgentNpc> npcs = new HashMap<>();
     private TextDisplay bank;
+    /** Optional: score-as-architecture behind each NPC. */
+    private CreditTower towers;
 
     public AgentVillage(Plugin plugin, Location center) {
         this.plugin = plugin;
@@ -37,6 +39,8 @@ public final class AgentVillage {
     }
 
     public Location center() { return center.clone(); }
+
+    public void withTowers(CreditTower towers) { this.towers = towers; }
 
     /**
      * @param agents   ranked best-first (the API returns them ordered by score)
@@ -62,10 +66,15 @@ public final class AgentVillage {
                 npc.moveTo(loc);
                 npc.update(a, i);
             }
+            if (towers != null) towers.update(loc, a);
             i++;
         }
         npcs.entrySet().removeIf(e -> {
-            if (!now.contains(e.getKey())) { e.getValue().remove(); return true; }
+            if (!now.contains(e.getKey())) {
+                if (towers != null) towers.forget(e.getKey(), e.getValue().location());
+                e.getValue().remove();
+                return true;
+            }
             return false;
         });
     }
@@ -171,6 +180,7 @@ public final class AgentVillage {
     public void clear() {
         npcs.values().forEach(AgentNpc::remove);
         npcs.clear();
+        if (towers != null) towers.clear();
         if (bank != null) { bank.remove(); bank = null; }
     }
 }

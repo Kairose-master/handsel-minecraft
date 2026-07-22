@@ -24,6 +24,9 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     private AgentVillage village;
     private Miner miner;
     private MinerRig rig;
+    private final BlockCanvas canvas = new BlockCanvas();
+    private QuestBoard questBoard;
+    private MineShaft mineShaft;
     private BukkitTask poller;
     private BukkitTask minerTask;
     private int pollSeconds;
@@ -53,6 +56,8 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         if (board != null) board.clear();
         if (village != null) village.clear();
         if (rig != null) rig.clear();
+        if (mineShaft != null) mineShaft.clear();
+        canvas.restoreAll(); // never leave built blocks behind on shutdown
     }
 
     private void loadSettings() {
@@ -118,8 +123,12 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 if (village != null && !polledAgents.isEmpty()) village.render(polledAgents, vault);
                 if (board == null) return;
                 List<Job> filled = board.render(polledJobs, vault);
+                if (questBoard != null) questBoard.render(polledJobs, vault);
                 for (Job j : filled) {
                     if (broadcastFills) broadcastFill(j);
+                    if (questBoard != null && getConfig().getBoolean("build.celebrate", true)) {
+                        questBoard.celebrate(j);
+                    }
                     if (village != null) {
                         // Prefer the agent display names (they key the NPCs); the
                         // wallet labels never match one, so they're only a last
@@ -167,10 +176,16 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             final String wallet = lastWalletLine;
 
             getServer().getScheduler().runTask(this, () -> {
+                boolean justStarted = before != Miner.State.WORKING && after == Miner.State.WORKING;
                 if (rig != null) {
-                    if (before != Miner.State.WORKING && after == Miner.State.WORKING) rig.startFx();
+                    if (justStarted) rig.startFx();
                     if (result != null) rig.doneFx(result.success());
                     rig.render(miner, wallet);
+                }
+                if (mineShaft != null) {
+                    if (justStarted) mineShaft.onStart();
+                    else if (after == Miner.State.WORKING) mineShaft.tickProgress();
+                    if (result != null) mineShaft.onFinish(result.success(), 1);
                 }
                 if (result != null && getConfig().getBoolean("mining.broadcast", true)) {
                     getServer().broadcast(result.success()
@@ -229,10 +244,14 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             getLogger().warning("saved board world '" + worldName + "' not found; place it again with /lm board");
             return;
         }
-        board = new JobBoard(new Location(w,
+        Location boardLoc = new Location(w,
                 getConfig().getDouble("board.x"),
                 getConfig().getDouble("board.y"),
-                getConfig().getDouble("board.z")));
+                getConfig().getDouble("board.z"));
+        board = new JobBoard(boardLoc);
+        if (getConfig().getBoolean("build.quest-lectern", true)) {
+            questBoard = new QuestBoard(this, canvas, boardLoc);
+        }
     }
 
     private void saveBoardLocation(Location loc) {
@@ -251,6 +270,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 getConfig().getDouble("village.x"),
                 getConfig().getDouble("village.y"),
                 getConfig().getDouble("village.z")));
+        if (getConfig().getBoolean("build.towers", true)) village.withTowers(new CreditTower(canvas));
     }
 
     private void restoreRigFromConfig() {
@@ -258,10 +278,15 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         if (worldName == null) return;
         var w = getServer().getWorld(worldName);
         if (w == null) return;
-        rig = new MinerRig(new Location(w,
+        Location rigLoc = new Location(w,
                 getConfig().getDouble("rig.x"),
                 getConfig().getDouble("rig.y"),
-                getConfig().getDouble("rig.z")));
+                getConfig().getDouble("rig.z"));
+        rig = new MinerRig(rigLoc);
+        if (getConfig().getBoolean("build.mine", true)) {
+            mineShaft = new MineShaft(this, canvas, rigLoc,
+                    getConfig().getInt("mining.expected-seconds", 60));
+        }
     }
 
     private void saveLocation(String key, Location loc) {
@@ -290,6 +315,9 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                         .add(p.getEyeLocation().getDirection().multiply(3));
                 if (board != null) board.clear();
                 board = new JobBoard(loc);
+                if (getConfig().getBoolean("build.quest-lectern", true)) {
+                    questBoard = new QuestBoard(this, canvas, loc);
+                }
                 saveBoardLocation(loc);
                 startPolling();
                 s.sendMessage("§aLedgermind board placed. It updates every " + pollSeconds + "s.");
@@ -302,6 +330,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 Location loc = p.getLocation().clone();
                 if (village != null) village.clear();
                 village = new AgentVillage(this, loc);
+                if (getConfig().getBoolean("build.towers", true)) village.withTowers(new CreditTower(canvas));
                 saveLocation("village", loc);
                 startPolling();
                 s.sendMessage("§aAgent village anchored here. Up to " + maxAgents
@@ -314,6 +343,11 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 }
                 if (rig != null) rig.clear();
                 rig = new MinerRig(p.getLocation().clone());
+                if (getConfig().getBoolean("build.mine", true)) {
+                    mineShaft = new MineShaft(this, canvas, p.getLocation().clone(),
+                            getConfig().getInt("mining.expected-seconds", 60));
+                    mineShaft.build();
+                }
                 saveLocation("rig", p.getLocation());
                 if (miner != null) rig.render(miner, null);
                 s.sendMessage(miner == null
@@ -433,9 +467,16 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 if (board != null) board.clear();
                 if (village != null) village.clear();
                 if (rig != null) rig.clear();
+                if (questBoard != null) questBoard.clear();
+                if (mineShaft != null) mineShaft.clear();
+                int restored = canvas.size();
+                canvas.restoreAll();
                 board = null;
                 village = null;
                 rig = null;
+                questBoard = null;
+                mineShaft = null;
+                s.sendMessage("§7블록 " + restored + "개를 원래대로 복구했습니다.");
                 getConfig().set("board", null);
                 getConfig().set("village", null);
                 getConfig().set("rig", null);

@@ -47,9 +47,25 @@ mining:
   # how long a single task may take before the request is abandoned
   model-timeout-minutes: 15
   poll-seconds: 5
+  # 보스바 진행률 기준 시간(초). 모델이 보통 이 정도 걸린다고 가정합니다
+  expected-seconds: 60
   # start mining as soon as the server starts (otherwise: /lm mine start)
   autostart: false
   # announce each mined task in chat
   broadcast: true
 
 # rig anchor is written here by /lm rig
+
+# ─── 월드에 실제로 짓는 것들 ──────────────────────────────────────────────
+# 이 플러그인이 놓는 블록은 전부 원래 블록을 기억했다가 /lm clear 또는
+# 서버 종료 시 되돌립니다. 플레이어가 지은 건물 위에는 절대 안 놓습니다
+# (공기·풀·꽃 같은 자리에만 놓음).
+build:
+  # 에이전트 NPC 뒤에 신용점수 탑 (100점당 1층, 등급별 재질)
+  towers: true
+  # 채굴 리그 앞에 금광석 + 금괴가 쌓이는 상자
+  mine: true
+  # 일감 목록을 담은 책이 놓인 독서대(우클릭하면 읽을 수 있음)
+  quest-lectern: true
+  # 일감이 채워지면 불꽃놀이 + 종소리 + 2초짜리 레드스톤 신호
+  celebrate: true
