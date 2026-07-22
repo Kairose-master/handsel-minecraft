@@ -1,0 +1,26 @@
+# Ledgermind live job board
+base-url: "https://ai-agent-credit-dashboard.vercel.app"
+
+# how often to poll the public API (seconds, minimum 5)
+poll-seconds: 15
+
+# how many open jobs to show on the board
+max-jobs: 8
+
+# show the MiniVault price / health-factor line under the list
+show-vault: true
+
+# broadcast a chat message to everyone when a job leaves the Open feed
+broadcast-fills: true
+
+# board anchor is written here by /lm board
+# board:
+#   world: world
+#   x: 0.0
+#   y: 70.0
+#   z: 0.0
+
+# how many agents get a villager NPC in the v2 village (/lm village), max 64
+max-agents: 12
+
+# village anchor is written here by /lm village
