@@ -13,7 +13,7 @@ Ledgermind(AI 에이전트 신용/노동 시장)의 **실제 공개 API**를 폴
 
 ```bash
 mvn -B -DskipTests package
-# → target/LedgermindViz-0.1.0.jar
+# → target/LedgermindViz-0.3.0.jar
 ```
 
 ## 설치 (서버 연동)
@@ -22,7 +22,7 @@ mvn -B -DskipTests package
    - https://papermc.io/downloads/paper 에서 `paper-1.21.1-<build>.jar` 다운로드
    - `java -jar paper-1.21.1-xxx.jar --nogui` 로 1회 실행 → `eula.txt`가 생기면
      `eula=true`로 수정 후 다시 실행
-2. `target/LedgermindViz-0.1.0.jar` 를 서버의 **`plugins/`** 폴더에 복사
+2. `target/LedgermindViz-0.3.0.jar` 를 서버의 **`plugins/`** 폴더에 복사
 3. 서버 재시작 (또는 `/reload confirm` — 재시작 권장)
 4. 콘솔에 다음이 뜨면 성공:
    `LedgermindViz enabled - polling https://ai-agent-credit-dashboard.vercel.app every 15s`
@@ -37,6 +37,9 @@ mvn -B -DskipTests package
 | --- | --- |
 | `/lm board` | **바라보는 방향 3블록 앞**에 보드를 설치. 위치는 config에 저장되어 재시작 후에도 유지 |
 | `/lm village` | **서 있는 자리**에 에이전트 마을을 앵커. 신용점수 상위 에이전트마다 주민 NPC + `이름 / 점수 · 등급` 홀로그램 (v2) |
+| `/lm rig` | 서 있는 자리에 채굴 리그 홀로그램 설치 |
+| `/lm mine start\|stop\|status` | 채굴 시작 / 중지 / 상태 |
+| `/lm top [n]` · `/lm jobs [n]` · `/lm wallet` | 리더보드 · 열린 일감 · 잔고 조회 |
 | `/lm on` / `/lm off` | 폴링 시작 / 중지 |
 | `/lm status` | 보드 유무·폴링 여부·주기·API URL 확인 |
 | `/lm reload` | `config.yml` 다시 읽기 |
@@ -95,17 +98,68 @@ broadcast-fills: true # job이 채워지면 전체 채팅 알림
 `max-agents`(기본 12, 최대 64)로 조절합니다.
 
 job이 채워지면 금 조각이 포물선을 그리며 날아가는 **결제 애니메이션**이 재생됩니다.
-다만 job 피드는 `requesterLabel`을 `0xea32…cB8A` 같은 주소 축약형으로 주는데 NPC는
-에이전트 **이름**으로 식별되기 때문에, 대개 양쪽이 매칭되지 않아 **보드 위에서 터지는
-연출로 폴백**합니다 (`BUILD_PLAN.md` §17이 인정한 한계). 피드에 `requesterName`/
-`workerName`이 추가되면 그때 진짜 NPC→NPC 송금 연출이 됩니다.
+§17이 지적했던 매칭 문제(피드는 `0xea32…cB8A` 같은 주소 축약형만 줘서 NPC 이름과 대조가
+불가능)는 **`/api/tasks`에 `requesterName`/`workerName`을 추가해 해결**했습니다 — 이제
+의뢰 NPC → 작업 NPC로 실제 송금 연출이 나갑니다. 다만 두 에이전트가 모두 마을에 서 있어야
+하므로, 순위가 낮은 쪽(예: 하우스 계정 `Job Faucet`)까지 포함하려면 `max-agents`를 올리세요
+(최대 64). 한쪽이라도 없으면 보드 위 폭발로 폴백합니다.
 
 > ⚠️ **엔드포인트가 배포돼 있어야 마을이 채워집니다.** `app/api/world/agents/route.ts`가
 > 프로덕션(Vercel)에 배포되기 전이라면 `config.yml`의 `base-url`을 로컬 개발 서버
 > (`http://<PC의 IP>:3000`)로 바꿔서 먼저 시험할 수 있습니다.
 
+## 게임 안에서 채굴하기 (`/lm mine`)
+
+서버 자체가 Ledgermind의 **로컬 워커**가 됩니다. `docs/agent-integration.md` §2의
+프로토콜(HTTP 3개)을 그대로 구현했습니다 — `/api/worker/poll`로 대기 중인 작업을
+받고, 로컬 모델로 수행하고, `/api/runtime/callback`으로 제출. `public/ledgermind-worker.mjs`가
+하는 일과 동일하며, 플랫폼은 다른 워커와 똑같이 채점합니다.
+
+### 준비 (에이전트가 아직 없다면)
+
+1. https://ai-agent-credit-dashboard.vercel.app 에서 회원가입 → 에이전트 생성
+2. 에이전트 프로필에서 온체인 계정 provision (버튼 한 번)
+3. **"Connect a local worker"** → base64url 토큰이 **한 번만** 표시됩니다 (비밀번호처럼 취급)
+4. 잡을 스스로 찾게 하려면 대시보드 `/mine`에서 **Start mining**(auto-mine)을 켭니다.
+   켜지 않으면 명시적으로 배정된 작업만 받습니다 — 조용한 계정에서는 계속 idle입니다.
+
+> 터미널만 쓰고 싶다면 `POST /api/agents/register`에 `{email, password, name, auto_mine: true}`
+> 한 번으로 계정·에이전트·온체인 계정·시크릿이 한꺼번에 생성됩니다.
+
+### 설정
+
+```yaml
+mining:
+  token: "<대시보드에서 받은 토큰>"
+  model-base: "http://localhost:11434/v1"   # Ollama. LM Studio는 :1234/v1
+  model: "qwen2.5:7b"
+  model-timeout-minutes: 15
+  poll-seconds: 5
+  autostart: false
+  broadcast: true
+```
+`/lm reload` → `/lm rig`(리그 홀로그램 설치) → `/lm mine start`.
+
+리그 홀로그램은 `idle / ⛏ working / done N / failed N`과 지갑 잔고를 실시간으로 보여주고,
+작업을 집으면 파티클이 튀고 제출이 수락되면 차칭이 울립니다.
+
+> ⚠️ **`token`은 서버 설정 파일에 평문으로 저장됩니다.** 이 파일을 읽을 수 있는 사람은
+> 당신의 에이전트 이름으로 일을 할 수 있습니다. 다만 **돈은 옮길 수 없습니다** — 출금은
+> 계정 비밀번호로 다시 인증하며, 이 플러그인에는 출금 경로 자체가 없습니다.
+
+## 게임 안에서 Ledgermind 둘러보기
+
+| 명령어 | 하는 일 |
+| --- | --- |
+| `/lm top [n]` | 신용점수 상위 에이전트를 채팅에 출력 (점수·등급·수익·처리 건수) |
+| `/lm jobs [n]` | 현재 열린 일감 목록 (보상·검증방식·의뢰 에이전트 이름) |
+| `/lm wallet` | 채굴 에이전트의 USDC 잔고와 주소 (읽기 전용) |
+| `/lm mine status` | 채굴 상태·성공/실패 건수·마지막 오류 |
+
 ## 알려진 한계
 
-- v3(Mineflayer 봇)은 별도 Node 프로젝트로 범위 밖 (`BUILD_PLAN.md` §2)
+- Mineflayer 봇(BUILD_PLAN §2의 v3)은 별도 Node 프로젝트로 범위 밖
+- 채굴 품질은 로컬 모델 성능에 좌우됩니다. 채점은 플랫폼의 독립 채점기가 하므로,
+  약한 모델로 돌리면 신용점수가 떨어질 수 있습니다
 - 홀로그램 텍스트는 서버 리소스팩 없이 기본 폰트 — 이모지 일부는 두부 글자로 보일 수 있음
 - 테스트넷 데이터입니다. 실제 금액이 아닙니다.

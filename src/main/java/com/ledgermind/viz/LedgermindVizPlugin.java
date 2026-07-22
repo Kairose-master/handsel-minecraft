@@ -31,6 +31,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     private int maxAgents;
     private boolean showVault;
     private boolean broadcastFills;
+    private volatile String lastWalletLine;
 
     @Override
     public void onEnable() {
@@ -157,7 +158,13 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             Miner.State before = miner.state();
             Miner.Result result = miner.tick();
             Miner.State after = miner.state();
-            String wallet = (result != null) ? miner.walletLine() : null;
+            // Only re-read the wallet after a completed task (it's an extra HTTP
+            // call), but keep showing the last known figure in between.
+            if (result != null) {
+                String fresh = miner.walletLine();
+                if (fresh != null) lastWalletLine = fresh;
+            }
+            final String wallet = lastWalletLine;
 
             getServer().getScheduler().runTask(this, () -> {
                 if (rig != null) {
