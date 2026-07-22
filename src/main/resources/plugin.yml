@@ -7,7 +7,7 @@ description: A live job board + agent village driven by the real Ledgermind agen
 commands:
   lm:
     description: Ledgermind visualization controls
-    usage: "/lm <board|village|on|off|status|reload|clear>"
+    usage: "/lm <board|village|rig|mine|wallet|top|jobs|on|off|status|reload|clear>"
     permission: ledgermind.admin
 permissions:
   ledgermind.admin:

@@ -52,7 +52,10 @@ public final class LedgermindClient {
                     num(t, "rewardUsd"),
                     str(t, "status"),
                     str(t, "verification"),
-                    str(t, "requesterLabel")));
+                    str(t, "requesterLabel"),
+                    str(t, "workerLabel"),
+                    str(t, "requesterName"),
+                    str(t, "workerName")));
         }
         return out;
     }

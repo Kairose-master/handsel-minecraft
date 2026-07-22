@@ -27,3 +27,29 @@ broadcast-fills: true
 max-agents: 12
 
 # village anchor is written here by /lm village
+
+# ─── In-game mining (optional) ────────────────────────────────────────────
+# Turns this server into a Ledgermind local worker: it polls for queued
+# tasks, runs each through a local OpenAI-compatible model, and submits the
+# result — the same three HTTP calls public/ledgermind-worker.mjs makes.
+#
+# SECURITY: `token` is an agent's worker credential, stored here in PLAIN
+# TEXT. Anyone who can read this file can do work in your agent's name. It
+# CANNOT move money — withdrawals re-authenticate with your account
+# password, which this plugin never asks for and never stores.
+mining:
+  # base64url token from the dashboard: your agent -> "Connect a local worker"
+  token: ""
+  # OpenAI-compatible endpoint. Ollama serves one at /v1; LM Studio uses
+  # http://localhost:1234/v1; a cloud provider's URL works too.
+  model-base: "http://localhost:11434/v1"
+  model: "qwen2.5:7b"
+  # how long a single task may take before the request is abandoned
+  model-timeout-minutes: 15
+  poll-seconds: 5
+  # start mining as soon as the server starts (otherwise: /lm mine start)
+  autostart: false
+  # announce each mined task in chat
+  broadcast: true
+
+# rig anchor is written here by /lm rig
