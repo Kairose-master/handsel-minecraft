@@ -551,3 +551,249 @@ public final class LedgermindVizPlugin extends JavaPlugin {
 - v2 endpoint `GET /api/world/agents` (keyless) → NPCs per agent.
 - ClawHub/Modrinth listing for the plugin itself once it's polished.
 ```
+
+---
+
+# v2 — Agent Village (spec)
+
+> Build v1 first. v2 turns the job board into a **living village**: one NPC per
+> agent with a floating credit-score hologram, and a **payment animation**
+> (requester → worker) every time a job fills. This is the Project-Sid-style
+> payload — the part that actually goes viral.
+
+## 14. v2 data dependency — NEW keyless endpoint (main repo)
+
+`getWorldState()` (app/actions/world.ts) is a **session-scoped server action**
+(returns only the viewer's own agents) — not usable by an external plugin. v2
+needs a small **public, keyless leaderboard endpoint**. Add it to the Next.js
+app (this is the only v2 change in the main repo):
+
+**File:** `app/api/world/agents/route.ts`
+```ts
+import { db } from '@/lib/db'
+import { agent } from '@/lib/db/schema'
+import { desc } from 'drizzle-orm'
+
+export const dynamic = 'force-dynamic'
+
+// Public, non-sensitive leaderboard for external visualizers (e.g. the
+// Minecraft plugin). Only exposes what /world already shows publicly:
+// display name, credit score, rating. NO email/secret/owner/address here.
+export async function GET(request: Request): Promise<Response> {
+  const url = new URL(request.url)
+  const limit = Math.min(Number(url.searchParams.get('limit') ?? 24) || 24, 64)
+  const rows = await db
+    .select({ name: agent.name, creditScore: agent.creditScore, creditRating: agent.creditRating })
+    .from(agent)
+    .orderBy(desc(agent.creditScore))
+    .limit(limit)
+  return Response.json({
+    type: 'LedgermindAgents',
+    count: rows.length,
+    agents: rows.map((r) => ({
+      name: r.name,
+      creditScore: Number(r.creditScore),
+      creditRating: r.creditRating ?? 'unrated',
+    })),
+  })
+}
+```
+
+**Response:**
+```json
+{ "type": "LedgermindAgents", "count": 2,
+  "agents": [
+    { "name": "Claude-Voice", "creditScore": 715, "creditRating": "A-" },
+    { "name": "Worker-0d4h", "creditScore": 0, "creditRating": "unrated" } ] }
+```
+Privacy: name/score/rating are already public on `/world` and the ERC-8004 agent
+card. Do NOT add email, owner, secret, or wallet address to this route. Verify
+`npm run test` + `tsc` still green after adding it (it's a thin read route).
+
+> Optional: also expose `jobsDone`/`earnedUsd` if a cheap aggregate exists — nice
+> for the hologram, not required.
+
+## 15. Village design
+
+```
+        [ 🏦 BANK ]                 ← credit/lending theme sign + MiniVault gauge (v1 vault line)
+            |
+   NPC   NPC   NPC   NPC            ← one villager per agent, in a grid/arc
+   NPC   NPC   NPC   NPC              floating hologram above each:  name / score · rating
+            |
+      [ 📋 JOB BOARD ]              ← the v1 board (open jobs) at village center
+```
+- Anchor set by `/lm village` (like `/lm board`), saved to config.
+- Villagers laid out in a grid around the plaza; the v1 job board sits at center.
+- Credit tier → hologram color (match the app's `cardTier`): Gold ≥ A, Sapphire
+  B, Bronze C, Graphite/Green unrated. (See `app/(dashboard)/profile/page.tsx`
+  `cardTier()` for the exact bands.)
+
+## 16. Per-agent NPC
+
+Spawn a **Villager** (decorative, AI off) + a **TextDisplay** hologram above it.
+Keep a `Map<String, AgentNpc>` keyed by agent name; each poll: add new, remove
+gone, update score/rating (particle burst when score rises).
+
+```java
+// Agent.java
+package com.ledgermind.viz;
+public record Agent(String name, double creditScore, String creditRating) {}
+```
+
+```java
+// AgentNpc.java  (one villager + hologram; MAIN THREAD ONLY)
+package com.ledgermind.viz;
+
+import org.bukkit.Color;
+import org.bukkit.Location;
+import org.bukkit.Particle;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.TextDisplay;
+import org.bukkit.entity.Villager;
+
+public final class AgentNpc {
+    private final Villager villager;
+    private final TextDisplay label;
+    private double lastScore;
+
+    public AgentNpc(Location loc, Agent a) {
+        var world = loc.getWorld();
+        villager = (Villager) world.spawnEntity(loc, EntityType.VILLAGER);
+        villager.setAI(false);
+        villager.setInvulnerable(true);
+        villager.setSilent(true);
+        villager.setPersistent(false);
+        villager.setProfession(Villager.Profession.NITWIT); // neutral look
+        label = world.spawn(loc.clone().add(0, 2.2, 0), TextDisplay.class, td -> {
+            td.setBillboard(Display.Billboard.CENTER);
+            td.setSeeThrough(true);
+            td.setBackgroundColor(Color.fromARGB(140, 8, 12, 22));
+        });
+        lastScore = a.creditScore();
+        write(a);
+    }
+
+    public void update(Agent a) {
+        if (a.creditScore() > lastScore + 0.5) {
+            var w = villager.getWorld();
+            w.spawnParticle(Particle.HAPPY_VILLAGER, villager.getLocation().add(0, 2.4, 0), 16, .3, .3, .3, 0);
+        }
+        lastScore = a.creditScore();
+        write(a);
+    }
+
+    private void write(Agent a) {
+        String col = tierColor(a.creditRating(), a.creditScore());
+        label.setText("§f" + a.name() + "\n" + col + (long) a.creditScore() + " §8· " + col + a.creditRating());
+    }
+
+    public void remove() { villager.remove(); label.remove(); }
+
+    // Match app cardTier bands: Gold A / Sapphire B / Bronze C / Graphite unrated.
+    static String tierColor(String rating, double score) {
+        String r = rating == null ? "" : rating.toUpperCase();
+        if (r.startsWith("A")) return "§6";   // gold
+        if (r.startsWith("B")) return "§b";   // sapphire
+        if (r.startsWith("C")) return "§c";   // bronze-ish
+        return score > 0 ? "§a" : "§8";        // green / graphite (unrated)
+    }
+}
+```
+
+```java
+// AgentVillage.java  (layout + diff; MAIN THREAD ONLY)
+package com.ledgermind.viz;
+
+import org.bukkit.Location;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+public final class AgentVillage {
+    private final Location center;
+    private final Map<String, AgentNpc> npcs = new HashMap<>();
+
+    public AgentVillage(Location center) { this.center = center.clone(); }
+
+    public void render(List<Agent> agents) {
+        Set<String> now = new HashSet<>();
+        int i = 0, perRow = 4; double gap = 2.5;
+        for (Agent a : agents) {
+            now.add(a.name());
+            int row = i / perRow, col = i % perRow;
+            Location loc = center.clone().add((col - (perRow - 1) / 2.0) * gap, 0, 3 + row * gap);
+            // keep NPCs on the ground: use the highest block if needed
+            loc.setY(center.getY());
+            AgentNpc npc = npcs.get(a.name());
+            if (npc == null) npcs.put(a.name(), new AgentNpc(loc, a));
+            else npc.update(a);
+            i++;
+        }
+        npcs.entrySet().removeIf(e -> { if (!now.contains(e.getKey())) { e.getValue().remove(); return true; } return false; });
+    }
+
+    /** Best-effort: animate a payment from requester NPC → worker NPC. */
+    public void animatePayment(String requesterName, String workerName) {
+        AgentNpc from = npcs.get(requesterName), to = npcs.get(workerName);
+        Location a = center.clone().add(0, 1.2, 0); // fallback: at board
+        // (For a first cut, spawn a gold-nugget item and a particle line between
+        //  the two villagers if both resolve; else a burst at `a`. See §17.)
+    }
+
+    public void clear() { npcs.values().forEach(AgentNpc::remove); npcs.clear(); }
+}
+```
+
+## 17. Payment animation (the money shot)
+
+When the v1 board detects a **filled job**, resolve who paid whom and animate it:
+- v1 currently doesn't return the filled job's requester/worker names. **Upgrade
+  the v1 diff** to track full `Job` objects (not just ids) so that on fill you
+  have `requesterLabel`, and — if the API exposes it after fill — `workerLabel`.
+  (Open jobs have `workerLabel: null`; to know the worker you may need `get_job`
+  /a completed-jobs feed. Simplest v2: animate requester → a generic "worker"
+  NPC, or a gold-nugget arc from the requester NPC to the job board.)
+- Effect: spawn a dropped **gold nugget** item that lerps along the line between
+  the two NPCs (or NPC → board) over ~1s, trailing `Particle.WAX_ON`/`CRIT`, then
+  a `HAPPY_VILLAGER` burst + `Sound.ENTITY_EXPERIENCE_ORB_PICKUP` at the target,
+  and a chat broadcast `§a💰 {requester} → {worker}: job filled & paid`.
+- Matching labels: agent NPCs are keyed by **name**, but jobs carry
+  `requesterLabel` (an address-shortened string like `0xea32…cB8A`), not the
+  agent name. To match reliably, add `requesterName`/`workerName` to the
+  agents/jobs feed, OR key NPCs by the same label the jobs use. **Decide this
+  when wiring** — the honest fallback (burst at the board) still reads great on
+  camera.
+
+## 18. v2 wiring & gotchas
+
+- Extend `LedgermindClient` with `List<Agent> fetchAgents(int limit)` hitting
+  `/api/world/agents?limit=N` (same Gson pattern as `fetchOpenJobs`).
+- The plugin's async poll now fetches BOTH jobs and agents; the sync render hop
+  calls `board.render(...)` and `village.render(agents)`.
+- Villager gotchas: `setAI(false)` + `setPersistent(false)` + `setInvulnerable(true)`
+  so they don't wander, despawn, or take damage. They need a solid block beneath
+  or they fall — place the village on flat ground, or set each NPC's Y to the
+  anchor Y (as above). Cap agents shown (`perRow`, and a max) for perf/framing.
+- `Villager.Profession.NITWIT` / `EntityType.VILLAGER` names are stable on 1.21;
+  compile confirms. Consider `setGravity(false)` if the ground is uneven.
+- Command: add `/lm village` (place village center at the player), saved to
+  config like `/lm board`.
+
+## 19. v2 acceptance (human, on a real server)
+- `/lm village` spawns a plaza; within a poll, the top agents appear as villagers
+  with `name` + `score · rating` holograms, colored by credit tier.
+- An agent's score rising (after it completes work on Ledgermind) triggers a
+  green particle burst on its NPC within a poll.
+- A job filling triggers a payment animation (gold arc + cha-ching + broadcast).
+
+## 20. v2 build order
+1. Add `app/api/world/agents/route.ts` to the main repo; `tsc` + `npm run test`
+   green; deploy (Vercel) so the endpoint is live.
+2. Add `Agent`, `AgentNpc`, `AgentVillage`, `fetchAgents`, `/lm village`.
+3. Wire the payment animation (start with the board-burst fallback; upgrade to
+   requester→worker once the feed carries names).
+4. `mvn package` → jar. Hand to human to run + record the village clip.
