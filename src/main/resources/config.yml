@@ -60,6 +60,8 @@ mining:
   human-timeout-seconds: 300
   # 시간이 지나면 모델이 대신 처리 (false면 그냥 큐에 남겨둠)
   human-fallback-to-model: true
+  # 받아놓고 제출을 안 하거나 접속을 끊으면 이 시간 뒤에 회수합니다
+  human-claim-seconds: 600
   # announce each mined task in chat
   broadcast: true
 

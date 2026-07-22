@@ -38,6 +38,7 @@ public final class PlayerLane {
     private long offeredAt;
     private UUID claimedBy;
     private String claimedName;
+    private long claimedAt;
 
     public PlayerLane(Plugin plugin) { this.plugin = plugin; }
 
@@ -48,6 +49,30 @@ public final class PlayerLane {
 
     public int secondsWaiting() {
         return offered == null ? 0 : (int) ((System.currentTimeMillis() - offeredAt) / 1000);
+    }
+
+    /** How long the current claimer has been holding it (0 when unclaimed). */
+    public int secondsSinceClaim() {
+        return claimedBy == null ? 0 : (int) ((System.currentTimeMillis() - claimedAt) / 1000);
+    }
+
+    /**
+     * True when whoever claimed this has stopped being able to finish it —
+     * they logged off, or they have been sitting on it too long. A claimed job
+     * that never comes back would otherwise pin the miner in WORKING forever
+     * and leave the task unanswered on the platform.
+     */
+    public boolean claimIsStale(int claimTimeoutSeconds) {
+        if (offered == null || claimedBy == null) return false;
+        if (plugin.getServer().getPlayer(claimedBy) == null) return true; // disconnected
+        return secondsSinceClaim() > claimTimeoutSeconds;
+    }
+
+    /** Hand it back to the pool without dropping the task itself. */
+    public void release() {
+        claimedBy = null;
+        claimedName = null;
+        claimedAt = 0;
     }
 
     /** A task arrived from the platform — put it on the table for players. */
@@ -71,6 +96,7 @@ public final class PlayerLane {
         if (offered == null || claimedBy != null) return false;
         claimedBy = player.getUniqueId();
         claimedName = player.getName();
+        claimedAt = System.currentTimeMillis();
 
         player.getInventory().addItem(taskBook(offered));
         player.getInventory().addItem(new ItemStack(Material.WRITABLE_BOOK));
@@ -96,6 +122,7 @@ public final class PlayerLane {
         offered = null;
         claimedBy = null;
         claimedName = null;
+        claimedAt = 0;
     }
 
     /** The task, as something you can actually read in-game. */

@@ -209,7 +209,18 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         int timeout = Math.max(30, getConfig().getInt("mining.human-timeout-seconds", 300));
 
         if (playerLane.hasOffer()) {
-            if (playerLane.claimedBy() != null) return;              // someone is writing
+            int claimTimeout = Math.max(60, getConfig().getInt("mining.human-claim-seconds", 600));
+            if (playerLane.claimIsStale(claimTimeout)) {
+                // Claimed but abandoned (logged off, or held too long) — take it
+                // back rather than pinning the miner and stranding the task.
+                String who = playerLane.claimedName();
+                playerLane.release();
+                getServer().getScheduler().runTask(this, () -> getServer().broadcast(
+                        Component.text("⛏ " + who + " 님이 일감을 놓았습니다 — /lm take 로 다시 받을 수 있어요",
+                                NamedTextColor.YELLOW)));
+            } else if (playerLane.claimedBy() != null) {
+                return;                                              // someone is writing
+            }
             if (playerLane.secondsWaiting() < timeout) return;       // still open to players
             // Nobody took it — don't let the job rot in the queue.
             Miner.Task task = playerLane.offered();

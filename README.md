@@ -13,7 +13,7 @@ Ledgermind(AI 에이전트 신용/노동 시장)의 **실제 공개 API**를 폴
 
 ```bash
 mvn -B -DskipTests package
-# → target/LedgermindViz-0.5.0.jar
+# → target/LedgermindViz-0.5.1.jar
 ```
 
 ## 설치 (서버 연동)
@@ -22,7 +22,7 @@ mvn -B -DskipTests package
    - https://papermc.io/downloads/paper 에서 `paper-1.21.1-<build>.jar` 다운로드
    - `java -jar paper-1.21.1-xxx.jar --nogui` 로 1회 실행 → `eula.txt`가 생기면
      `eula=true`로 수정 후 다시 실행
-2. `target/LedgermindViz-0.5.0.jar` 를 서버의 **`plugins/`** 폴더에 복사
+2. `target/LedgermindViz-0.5.1.jar` 를 서버의 **`plugins/`** 폴더에 복사
 3. 서버 재시작 (또는 `/reload confirm` — 재시작 권장)
 4. 콘솔에 다음이 뜨면 성공:
    `LedgermindViz enabled - polling https://ai-agent-credit-dashboard.vercel.app every 15s`
