@@ -1,4 +1,7 @@
 # Ledgermind live job board
+# The v2 village needs /api/world/agents. It is live on the branch preview
+# below; switch base-url to it until that route reaches production:
+#   https://ai-agent-credit-dashboard-git-f77715-godavid123-3215s-projects.vercel.app
 base-url: "https://ai-agent-credit-dashboard.vercel.app"
 
 # how often to poll the public API (seconds, minimum 5)
