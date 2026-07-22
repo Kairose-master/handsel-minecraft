@@ -16,8 +16,8 @@ import java.util.Locale;
 public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor {
 
     private static final List<String> SUBS =
-            List.of("board", "village", "rig", "mine", "wallet", "top", "jobs",
-                    "on", "off", "status", "reload", "clear");
+            List.of("board", "village", "rig", "mine", "take", "submit", "wallet",
+                    "top", "jobs", "on", "off", "status", "reload", "clear");
 
     private LedgermindClient client;
     private JobBoard board;
@@ -27,6 +27,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     private final BlockCanvas canvas = new BlockCanvas();
     private QuestBoard questBoard;
     private MineShaft mineShaft;
+    private final PlayerLane playerLane = new PlayerLane(this);
     private BukkitTask poller;
     private BukkitTask minerTask;
     private int pollSeconds;
@@ -164,6 +165,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         miner.markStarted();
         long ticks = Math.max(1, getConfig().getInt("mining.poll-seconds", 5)) * 20L;
         minerTask = getServer().getScheduler().runTaskTimerAsynchronously(this, () -> {
+            if (getConfig().getBoolean("mining.human-mode", false)) { humanTick(); return; }
             Miner.State before = miner.state();
             Miner.Result result = miner.tick();
             Miner.State after = miner.state();
@@ -196,6 +198,58 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 }
             });
         }, 20L, ticks);
+    }
+
+    /**
+     * Human-lane poll: claim a task, put it on the table for players, and only
+     * fall back to the model when nobody takes it in time. Runs async like the
+     * model loop; every in-world/chat effect hops to the main thread.
+     */
+    private void humanTick() {
+        int timeout = Math.max(30, getConfig().getInt("mining.human-timeout-seconds", 300));
+
+        if (playerLane.hasOffer()) {
+            if (playerLane.claimedBy() != null) return;              // someone is writing
+            if (playerLane.secondsWaiting() < timeout) return;       // still open to players
+            // Nobody took it — don't let the job rot in the queue.
+            Miner.Task task = playerLane.offered();
+            if (!getConfig().getBoolean("mining.human-fallback-to-model", true)) return;
+            long startedAt = System.currentTimeMillis();
+            String output;
+            try {
+                output = miner.runModel(task.prompt());
+            } catch (Exception e) {
+                output = "";
+                getLogger().warning("fallback model failed: " + e.getMessage());
+            }
+            Miner.Result r = miner.deliver(task, output,
+                    (int) ((System.currentTimeMillis() - startedAt) / 1000));
+            getServer().getScheduler().runTask(this, () -> {
+                playerLane.clear();
+                announceResult(r, "§7(아무도 안 받아서 모델이 처리했습니다)");
+            });
+            return;
+        }
+
+        Miner.Task task = miner.claimTask();
+        if (task == null) return;
+        getServer().getScheduler().runTask(this, () -> {
+            playerLane.offer(task, timeout);
+            if (mineShaft != null) mineShaft.onStart();
+            if (rig != null) { rig.startFx(); rig.render(miner, lastWalletLine); }
+        });
+    }
+
+    /** Shared post-delivery effects for both lanes. */
+    private void announceResult(Miner.Result r, String suffix) {
+        if (mineShaft != null) mineShaft.onFinish(r.success(), 1);
+        if (rig != null) { rig.doneFx(r.success()); rig.render(miner, lastWalletLine); }
+        if (getConfig().getBoolean("mining.broadcast", true)) {
+            getServer().broadcast(r.success()
+                    ? Component.text("⛏ Ledgermind: 제출 완료 (" + r.seconds() + "s) - "
+                            + r.taskLine() + " " + suffix, NamedTextColor.GREEN)
+                    : Component.text("⛏ Ledgermind: 제출 실패 - " + r.error(), NamedTextColor.RED));
+        }
     }
 
     private void stopMining() {
@@ -302,7 +356,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     @Override
     public boolean onCommand(CommandSender s, Command c, String label, String[] a) {
         if (a.length == 0) {
-            s.sendMessage("/lm <board|village|rig|mine|wallet|top|jobs|on|off|status|reload|clear>");
+            s.sendMessage("/lm <board|village|rig|mine|take|submit|wallet|top|jobs|on|off|status|reload|clear>");
             return true;
         }
         switch (a[0].toLowerCase(Locale.ROOT)) {
@@ -379,6 +433,47 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                             + " model=" + miner.model()
                             + (miner.lastError() != null ? " §clastError=" + miner.lastError() : ""));
                 }
+            }
+            case "take" -> {
+                if (!(s instanceof Player p)) { s.sendMessage("players only"); return true; }
+                if (!playerLane.hasOffer()) {
+                    s.sendMessage("§7지금 받을 수 있는 일감이 없습니다. 일감이 오면 채팅으로 알려드려요.");
+                    return true;
+                }
+                if (playerLane.claimedBy() != null) {
+                    s.sendMessage("§e이미 §f" + playerLane.claimedName() + "§e 님이 받았습니다.");
+                    return true;
+                }
+                if (playerLane.claim(p)) {
+                    getServer().broadcast(Component.text(
+                            "⛏ " + p.getName() + " 님이 일감을 받았습니다 — AI 에이전트와 같은 채점을 받습니다",
+                            NamedTextColor.GOLD));
+                }
+            }
+            case "submit" -> {
+                if (!(s instanceof Player p)) { s.sendMessage("players only"); return true; }
+                if (!playerLane.hasOffer() || !p.getUniqueId().equals(playerLane.claimedBy())) {
+                    s.sendMessage("§7당신이 받은 일감이 없습니다. §f/lm take§7 로 먼저 받으세요.");
+                    return true;
+                }
+                String answer = playerLane.readAnswer(p);
+                if (answer == null) {
+                    s.sendMessage("§c손에 §f서명된 책§c을 들고 있어야 합니다.");
+                    s.sendMessage("§7'책과 깃펜'에 답을 쓰고 → §f서명하기§7 → 다시 §f/lm submit");
+                    return true;
+                }
+                Miner.Task task = playerLane.offered();
+                int seconds = playerLane.secondsWaiting();
+                s.sendMessage("§a제출 중… §7채점 결과는 대시보드에 반영됩니다.");
+                getServer().getScheduler().runTaskAsynchronously(this, () -> {
+                    Miner.Result r = miner.deliver(task, answer, seconds);
+                    String fresh = miner.walletLine();
+                    if (fresh != null) lastWalletLine = fresh;
+                    getServer().getScheduler().runTask(this, () -> {
+                        playerLane.clear();
+                        announceResult(r, "§7(by " + p.getName() + ")");
+                    });
+                });
             }
             case "wallet" -> {
                 if (miner == null) {
@@ -483,7 +578,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 saveConfig();
                 s.sendMessage("§eboard, village and rig removed §7(mining itself: /lm mine stop)");
             }
-            default -> s.sendMessage("/lm <board|village|rig|mine|wallet|top|jobs|on|off|status|reload|clear>");
+            default -> s.sendMessage("/lm <board|village|rig|mine|take|submit|wallet|top|jobs|on|off|status|reload|clear>");
         }
         return true;
     }

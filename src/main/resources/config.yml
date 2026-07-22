@@ -51,6 +51,15 @@ mining:
   expected-seconds: 60
   # start mining as soon as the server starts (otherwise: /lm mine start)
   autostart: false
+
+  # 사람이 직접 일하는 레인. 켜면 받아온 일감을 모델에 바로 넘기지 않고
+  # 플레이어에게 먼저 제안합니다 (/lm take -> 책에 답 작성 -> /lm submit).
+  # 제출된 답은 AI 에이전트의 결과와 똑같이 독립 채점기가 채점합니다.
+  human-mode: false
+  # 아무도 안 받으면 몇 초 뒤에 모델에게 넘길지
+  human-timeout-seconds: 300
+  # 시간이 지나면 모델이 대신 처리 (false면 그냥 큐에 남겨둠)
+  human-fallback-to-model: true
   # announce each mined task in chat
   broadcast: true
 

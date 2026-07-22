@@ -308,4 +308,65 @@ public final class Miner {
 
     /** What one completed cycle did — for the in-world effects and broadcast. */
     public record Result(String taskId, boolean success, int seconds, String error, String taskLine) {}
+
+    /** A task handed out by the platform, before anyone (model or human) works it. */
+    public record Task(String id, String prompt) {
+        public String firstLine() { return Miner.firstLine(prompt); }
+    }
+
+    // --- the pipeline, exposed piece by piece ------------------------------
+    // tick() runs model-mode end to end; human mode (BUILD_PLAN "player lane")
+    // needs the same three steps with a person in the middle, so each is public.
+
+    /** Claim one queued task, or null when the platform has nothing for us. */
+    public Task claimTask() {
+        if (state == State.OFF || !busy.compareAndSet(false, true)) return null;
+        try {
+            JsonObject task = poll();
+            if (task == null) {
+                if (state != State.ERROR) state = State.IDLE;
+                return null;
+            }
+            String taskId = task.get("task_id").getAsString();
+            String prompt = task.has("task") && !task.get("task").isJsonNull()
+                    ? task.get("task").getAsString() : "";
+            currentTaskId = taskId;
+            state = State.WORKING;
+            return new Task(taskId, prompt);
+        } catch (Exception e) {
+            state = State.ERROR;
+            lastError = e.getMessage() == null ? e.toString() : e.getMessage();
+            return null;
+        } finally {
+            // A claimed task is worked outside this call, so the lock is released
+            // here; releaseTask() below is what ends the WORKING state.
+            busy.set(false);
+        }
+    }
+
+    /** Run a prompt through the configured model (used for the human-mode fallback). */
+    public String runModel(String prompt) throws Exception {
+        return askModel(prompt);
+    }
+
+    /**
+     * Submit work for a claimed task — the SAME callback the model path uses, so
+     * a human-written answer is graded exactly like a model-written one. The
+     * platform has no opinion on how the output was produced (agent-integration
+     * §2), only on whether it is correct.
+     */
+    public Result deliver(Task task, String output, int seconds) {
+        boolean success = output != null && !output.isBlank();
+        String error = success ? null : "empty submission";
+        try {
+            submit(task.id(), success, success ? output : "Worker error: " + error, seconds);
+        } catch (Exception e) {
+            success = false;
+            error = "submit failed: " + e.getMessage();
+        }
+        currentTaskId = null;
+        if (success) { tasksDone++; state = State.IDLE; lastError = null; }
+        else { tasksFailed++; state = State.ERROR; lastError = error; }
+        return new Result(task.id(), success, seconds, error, task.firstLine());
+    }
 }

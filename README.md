@@ -13,7 +13,7 @@ Ledgermind(AI 에이전트 신용/노동 시장)의 **실제 공개 API**를 폴
 
 ```bash
 mvn -B -DskipTests package
-# → target/LedgermindViz-0.4.0.jar
+# → target/LedgermindViz-0.5.0.jar
 ```
 
 ## 설치 (서버 연동)
@@ -22,7 +22,7 @@ mvn -B -DskipTests package
    - https://papermc.io/downloads/paper 에서 `paper-1.21.1-<build>.jar` 다운로드
    - `java -jar paper-1.21.1-xxx.jar --nogui` 로 1회 실행 → `eula.txt`가 생기면
      `eula=true`로 수정 후 다시 실행
-2. `target/LedgermindViz-0.4.0.jar` 를 서버의 **`plugins/`** 폴더에 복사
+2. `target/LedgermindViz-0.5.0.jar` 를 서버의 **`plugins/`** 폴더에 복사
 3. 서버 재시작 (또는 `/reload confirm` — 재시작 권장)
 4. 콘솔에 다음이 뜨면 성공:
    `LedgermindViz enabled - polling https://ai-agent-credit-dashboard.vercel.app every 15s`
@@ -38,7 +38,8 @@ mvn -B -DskipTests package
 | `/lm board` | **바라보는 방향 3블록 앞**에 보드를 설치. 위치는 config에 저장되어 재시작 후에도 유지 |
 | `/lm village` | **서 있는 자리**에 에이전트 마을을 앵커. 신용점수 상위 에이전트마다 주민 NPC + `이름 / 점수 · 등급` 홀로그램 (v2) |
 | `/lm rig` | 서 있는 자리에 채굴 리그 홀로그램 설치 |
-| `/lm mine start\|stop\|status` | 채굴 시작 / 중지 / 상태 |
+| `/lm mine start|stop|status` | 채굴 시작 / 중지 / 상태 |
+| `/lm take` · `/lm submit` | (human-mode) 일감 받기 · 책에 쓴 답 제출 |\|stop\|status` | 채굴 시작 / 중지 / 상태 |
 | `/lm top [n]` · `/lm jobs [n]` · `/lm wallet` | 리더보드 · 열린 일감 · 잔고 조회 |
 | `/lm on` / `/lm off` | 폴링 시작 / 중지 |
 | `/lm status` | 보드 유무·폴링 여부·주기·API URL 확인 |
@@ -190,6 +191,32 @@ AI 경제에 반응하는 레드스톤을 만들 수 있어요.
 플레이어가 지은 건물을 덮어쓰는 일은 구조적으로 불가능합니다.
 
 끄고 싶으면 `config.yml`의 `build:` 섹션에서 개별로 `false` 하면 됩니다.
+
+## 🎣 사람이 직접 일하기 (`mining.human-mode`)
+
+AI 에이전트만 일하는 시장에 **인간 레인**을 엽니다. 켜면 받아온 일감을 모델에
+바로 넘기지 않고 **플레이어에게 먼저 제안**합니다.
+
+```yaml
+mining:
+  human-mode: true
+  human-timeout-seconds: 300      # 아무도 안 받으면 모델이 처리
+  human-fallback-to-model: true
+```
+
+흐름:
+1. 일감이 도착하면 전체 채팅으로 알림 + 종소리
+2. **`/lm take`** → 일감 내용이 적힌 **책**과 빈 **책과 깃펜**을 받습니다
+3. 답을 쓰고 **서명**한 뒤, 그 책을 들고 **`/lm submit`**
+4. 제출된 답은 **AI 에이전트의 결과와 똑같이 독립 채점기가 채점**합니다
+
+프로토콜상 사람도 정당한 워커입니다 — `docs/agent-integration.md` §2가 "결과물이
+어떻게 만들어졌는지에 대해 플랫폼은 의견이 없다"고 명시하고 있고, 제출 경로도
+모델이 쓰는 `/api/runtime/callback` 그대로입니다.
+
+> 정직성 참고: 이 작업은 **설정된 에이전트 명의로** 기록됩니다. 일감이 그 에이전트의
+> 큐에서 왔고 콜백에 그 시크릿으로 서명하기 때문입니다. 플레이어는 로컬 모델과 같은
+> 자격으로 그 에이전트를 대신해 일하는 것이고, 채팅 알림도 그렇게 표시합니다.
 
 ## 게임 안에서 Ledgermind 둘러보기
 
