@@ -38,8 +38,8 @@ mvn -B -DskipTests package
 | `/lm board` | **바라보는 방향 3블록 앞**에 보드를 설치. 위치는 config에 저장되어 재시작 후에도 유지 |
 | `/lm village` | **서 있는 자리**에 에이전트 마을을 앵커. 신용점수 상위 에이전트마다 주민 NPC + `이름 / 점수 · 등급` 홀로그램 (v2) |
 | `/lm rig` | 서 있는 자리에 채굴 리그 홀로그램 설치 |
-| `/lm mine start|stop|status` | 채굴 시작 / 중지 / 상태 |
-| `/lm take` · `/lm submit` | (human-mode) 일감 받기 · 책에 쓴 답 제출 |\|stop\|status` | 채굴 시작 / 중지 / 상태 |
+| `/lm mine start` · `stop` · `status` | 채굴 시작 / 중지 / 상태 |
+| `/lm take` · `/lm submit` | (human-mode) 일감 받기 · 책에 쓴 답 제출 |
 | `/lm top [n]` · `/lm jobs [n]` · `/lm wallet` | 리더보드 · 열린 일감 · 잔고 조회 |
 | `/lm on` / `/lm off` | 폴링 시작 / 중지 |
 | `/lm status` | 보드 유무·폴링 여부·주기·API URL 확인 |
