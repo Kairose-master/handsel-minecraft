@@ -22,7 +22,7 @@ import java.util.Locale;
 public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor, Listener {
 
     private static final List<String> SUBS =
-            List.of("board", "village", "rig", "mine", "take", "answer", "submit",
+            List.of("help", "board", "village", "rig", "mine", "take", "answer", "submit",
                     "duel", "wallet", "top", "jobs", "on", "off", "status", "reload", "clear");
 
     private LedgermindClient client;
@@ -599,6 +599,30 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     private static final List<String> ADMIN_SUBS =
             List.of("board", "village", "rig", "mine", "on", "off", "reload", "clear");
 
+    /** The full custom-command reference, filtered by permission. */
+    private void sendHelp(CommandSender s) {
+        boolean admin = s.hasPermission("ledgermind.admin");
+        s.sendMessage("§6§l⛏ LedgermindViz §r§7— 마인크래프트 속 AI 에이전트 경제 §8v" + getPluginMeta().getVersion());
+        s.sendMessage("§8누구나 쓸 수 있는 명령");
+        s.sendMessage("§e/lm jobs §8[n] §7— 열린 일감 목록 (받으려면 아래 take)");
+        s.sendMessage("§e/lm take §f<번호> §7— 그 일감을 직접 수주 (책 받음)");
+        s.sendMessage("§e/lm answer §f<답> §7— 답 작성 §8(붙여넣기 가능, 여러 번 이어붙음)");
+        s.sendMessage("§e/lm submit §7— 작성한 답 제출 §8(AI와 같은 채점)");
+        s.sendMessage("§e/lm top §8[n] §7— 신용점수 상위 에이전트");
+        s.sendMessage("§e/lm wallet §7— 내 채굴 에이전트 지갑 잔고");
+        s.sendMessage("§e/lm duel §7— 인간 vs AI 대결 §8(/lm duel <답>, /lm duel stats)");
+        s.sendMessage("§e/lm status §7— 마을·폴링·채굴 상태");
+        s.sendMessage("§8우클릭: §7에이전트 = 프로필 · 게시판 = 일감 · 레버 = 풀가동🎆");
+        if (admin) {
+            s.sendMessage("§c관리자(OP) 전용");
+            s.sendMessage("§c/lm village §8[이름] [토큰] §7— 마을 세우기 §8(토큰=계정별, 도로 자동연결)");
+            s.sendMessage("§c/lm board §7— 일감 게시판 설치 · §c/lm rig §7— 채굴 리그 설치");
+            s.sendMessage("§c/lm mine §fstart|stop|status §7— 채굴 제어");
+            s.sendMessage("§c/lm on|off §7— API 폴링 · §c/lm reload §7— config 다시 읽기");
+            s.sendMessage("§c/lm clear §7— 마을·구조물 전부 제거(블록 원상복구)");
+        }
+    }
+
     @Override
     public boolean onCommand(CommandSender s, Command c, String label, String[] a) {
         if (a.length > 0 && ADMIN_SUBS.contains(a[0].toLowerCase(Locale.ROOT))
@@ -607,8 +631,8 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             s.sendMessage("§7쓸 수 있는 것: §f/lm take, /lm submit, /lm top, /lm jobs, /lm wallet, /lm status");
             return true;
         }
-        if (a.length == 0) {
-            s.sendMessage("/lm <board|village|rig|mine|take|submit|wallet|top|jobs|on|off|status|reload|clear>");
+        if (a.length == 0 || a[0].equalsIgnoreCase("help") || a[0].equals("?")) {
+            sendHelp(s);
             return true;
         }
         switch (a[0].toLowerCase(Locale.ROOT)) {
@@ -924,7 +948,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 saveConfig();
                 s.sendMessage("§eboard, 모든 마을, rig 제거됨 §7(채굴 자체: /lm mine stop)");
             }
-            default -> s.sendMessage("/lm <board|village|rig|mine|take|submit|wallet|top|jobs|on|off|status|reload|clear>");
+            default -> { s.sendMessage("§7알 수 없는 명령입니다."); sendHelp(s); }
         }
         return true;
     }
