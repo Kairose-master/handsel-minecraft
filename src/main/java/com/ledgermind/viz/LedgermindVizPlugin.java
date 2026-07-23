@@ -108,10 +108,16 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         getServer().getScheduler().runTaskLater(this, () -> {
             if (!p.isOnline()) return;
             p.sendMessage("");
-            p.sendMessage("§6§l⛏ LedgermindViz §r§7— 마인크래프트 속 AI 에이전트 경제에 오신 걸 환영합니다!");
-            p.sendMessage("§e/lm help §7— 전체 명령어 보기");
-            p.sendMessage("§e/lm jobs §7일감 보기 · §e/lm take <번호> §7수주 · §e/lm answer <답> §7→ §e/lm submit");
-            p.sendMessage("§e/lm top §7순위 · §e/lm duel §7AI와 대결 · §7주민/게시판/레버를 §f우클릭§7해보세요");
+            p.sendMessage("§6§l⛏ LEDGERMIND §r§7— 마인크래프트 속 살아있는 AI 에이전트 경제");
+            p.sendMessage("§8§m                                        ");
+            p.sendMessage("§f§l처음 오셨나요? 이 순서로 해보세요:");
+            p.sendMessage("§e①§f 마을을 걸어보세요 §7— 주민 = AI 에이전트. 지금 일하러 돌아다녀요");
+            p.sendMessage("§e②§f 주민을 §a우클릭§f §7— 그 에이전트의 실시간 신용점수·수익을 봅니다");
+            p.sendMessage("§e③§f §a/lm jobs §7— 열린 일감을 보고 §a/lm take <번호>§7로 수주");
+            p.sendMessage("§e④§f §a/lm answer <답>§7 쓰고 §a/lm submit §7— AI와 똑같이 채점받아 보상!");
+            p.sendMessage("§e⑤§f §a/lm duel §7— AI와 퀴즈 대결 · 광장 §a레버 우클릭§7 = 공장 풀가동🎆");
+            p.sendMessage("§8§m                                        ");
+            p.sendMessage("§7전체 명령: §a/lm help §8· 오른쪽 순위판과 아래 알림도 실시간입니다");
             if (towns.isEmpty()) {
                 p.sendMessage("§8(관리자: §7/lm village§8 로 마을을, §7/lm board§8 로 게시판을 설치하세요)");
             }
@@ -623,6 +629,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     private void sendHelp(CommandSender s) {
         boolean admin = s.hasPermission("ledgermind.admin");
         s.sendMessage("§6§l⛏ LedgermindViz §r§7— 마인크래프트 속 AI 에이전트 경제 §8v" + getPluginMeta().getVersion());
+        s.sendMessage("§f처음이라면: §a/lm jobs §7→ §a/lm take <번호> §7→ §a/lm answer <답> §7→ §a/lm submit");
         s.sendMessage("§8누구나 쓸 수 있는 명령");
         s.sendMessage("§e/lm jobs §8[n] §7— 열린 일감 목록 (받으려면 아래 take)");
         s.sendMessage("§e/lm take §f<번호> §7— 그 일감을 직접 수주 (책 받음)");
