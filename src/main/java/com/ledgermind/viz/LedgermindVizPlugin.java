@@ -16,8 +16,8 @@ import java.util.Locale;
 public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor {
 
     private static final List<String> SUBS =
-            List.of("board", "village", "rig", "mine", "take", "submit", "wallet",
-                    "top", "jobs", "on", "off", "status", "reload", "clear");
+            List.of("board", "village", "rig", "mine", "take", "answer", "submit",
+                    "wallet", "top", "jobs", "on", "off", "status", "reload", "clear");
 
     private LedgermindClient client;
     private JobBoard board;
@@ -503,6 +503,34 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
 
                 s.sendMessage("§7받을 일감을 고르세요: §f/lm jobs §7로 목록을 보고 §f/lm take <번호>");
             }
+            case "answer" -> {
+                if (!(s instanceof Player p)) { s.sendMessage("players only"); return true; }
+                if (playerLane.heldTask(p) == null) {
+                    s.sendMessage("§7받은 일감이 없습니다. §f/lm jobs §7→ §f/lm take <번호>§7 로 먼저 받으세요.");
+                    return true;
+                }
+                if (a.length < 2) {
+                    String draft = playerLane.draft(p);
+                    if (draft.isEmpty()) {
+                        s.sendMessage("§7사용법: §f/lm answer <답 내용>§7  — 채팅에 붙여넣기(Ctrl+V)도 됩니다.");
+                        s.sendMessage("§7여러 줄이면 §f/lm answer§7 를 여러 번 치면 이어붙습니다.");
+                        s.sendMessage("§7다 쓰면 §f/lm submit§7, 지우고 다시 쓰려면 §f/lm answer clear");
+                    } else {
+                        s.sendMessage("§7현재 작성한 답 (" + draft.length() + "자):");
+                        s.sendMessage("§f" + (draft.length() > 200 ? draft.substring(0, 200) + "…" : draft));
+                        s.sendMessage("§7제출하려면 §f/lm submit");
+                    }
+                    return true;
+                }
+                String line = String.join(" ", java.util.Arrays.copyOfRange(a, 1, a.length));
+                if (line.equalsIgnoreCase("clear")) {
+                    playerLane.clearDraft(p);
+                    s.sendMessage("§e답을 비웠습니다.");
+                    return true;
+                }
+                int len = playerLane.appendDraft(p, line);
+                s.sendMessage("§a추가됨 §7(총 " + len + "자). 더 쓰려면 §f/lm answer§7, 제출은 §f/lm submit");
+            }
             case "submit" -> {
                 if (!(s instanceof Player p)) { s.sendMessage("players only"); return true; }
                 Miner.Task task = playerLane.heldTask(p);
@@ -510,16 +538,21 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                     s.sendMessage("§7받은 일감이 없습니다. §f/lm jobs §7→ §f/lm take <번호>§7 로 먼저 받으세요.");
                     return true;
                 }
-                String answer = playerLane.readAnswer(p);
-                if (answer == null) {
-                    s.sendMessage("§c손에 §f서명된 책§c을 들고 있어야 합니다.");
-                    s.sendMessage("§7'책과 깃펜'에 답을 쓰고 → §f서명하기§7 → 다시 §f/lm submit");
+                // Prefer the chat-typed draft (paste-friendly, no length limit);
+                // fall back to a signed book for players who wrote one.
+                String answer = playerLane.draft(p);
+                if (answer.isEmpty()) answer = playerLane.readAnswer(p);
+                if (answer == null || answer.isEmpty()) {
+                    s.sendMessage("§c아직 제출할 답이 없습니다.");
+                    s.sendMessage("§7쉬운 방법: §f/lm answer <답>§7 (붙여넣기 가능) → §f/lm submit");
+                    s.sendMessage("§7또는: '책과 깃펜'에 쓰고 §f서명§7 후 손에 들고 §f/lm submit");
                     return true;
                 }
                 int seconds = playerLane.secondsHeld(p);
+                final String finalAnswer = answer;
                 s.sendMessage("§a제출 중… §7채점 결과는 대시보드에 반영됩니다.");
                 getServer().getScheduler().runTaskAsynchronously(this, () -> {
-                    Miner.Result r = miner.deliver(task, answer, seconds);
+                    Miner.Result r = miner.deliver(task, finalAnswer, seconds);
                     String fresh = miner.walletLine();
                     if (fresh != null) lastWalletLine = fresh;
                     getServer().getScheduler().runTask(this, () -> {

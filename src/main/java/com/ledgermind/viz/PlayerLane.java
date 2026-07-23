@@ -40,8 +40,13 @@ import java.util.UUID;
  */
 public final class PlayerLane {
 
-    /** One job a specific player is currently working. */
-    private record Held(Miner.Task task, long claimedAt) {}
+    /** One job a specific player is currently working, plus their typed draft. */
+    private static final class Held {
+        final Miner.Task task;
+        final long claimedAt;
+        final StringBuilder draft = new StringBuilder();
+        Held(Miner.Task task, long claimedAt) { this.task = task; this.claimedAt = claimedAt; }
+    }
 
     private final Plugin plugin;
     private final Map<UUID, Held> held = new HashMap<>();
@@ -86,19 +91,40 @@ public final class PlayerLane {
     public boolean isWorking(Player p) { return held.containsKey(p.getUniqueId()); }
     public Miner.Task heldTask(Player p) {
         Held h = held.get(p.getUniqueId());
-        return h == null ? null : h.task();
+        return h == null ? null : h.task;
     }
     public int secondsHeld(Player p) {
         Held h = held.get(p.getUniqueId());
-        return h == null ? 0 : (int) ((System.currentTimeMillis() - h.claimedAt()) / 1000);
+        return h == null ? 0 : (int) ((System.currentTimeMillis() - h.claimedAt) / 1000);
+    }
+
+    /** Append a chat-typed line to this player's draft answer. Returns the new length. */
+    public int appendDraft(Player p, String line) {
+        Held h = held.get(p.getUniqueId());
+        if (h == null) return -1;
+        if (h.draft.length() > 0) h.draft.append('\n');
+        h.draft.append(line);
+        return h.draft.length();
+    }
+
+    /** The draft typed via /lm answer, or "" if none. */
+    public String draft(Player p) {
+        Held h = held.get(p.getUniqueId());
+        return h == null ? "" : h.draft.toString();
+    }
+
+    public void clearDraft(Player p) {
+        Held h = held.get(p.getUniqueId());
+        if (h != null) h.draft.setLength(0);
     }
 
     /** Hand a claimed job to a player: the readable task + a book to answer in. */
     public void give(Player player, Miner.Task task) {
         held.put(player.getUniqueId(), new Held(task, System.currentTimeMillis()));
         player.getInventory().addItem(taskBook(task));
-        player.getInventory().addItem(new ItemStack(Material.WRITABLE_BOOK));
-        player.sendMessage("§a일감을 받았습니다. §7'책과 깃펜'에 답을 쓰고 §f서명§7한 뒤 §f/lm submit§7 하세요.");
+        player.sendMessage("§a일감을 받았습니다! §f받은 책§7을 우클릭해 내용을 읽으세요.");
+        player.sendMessage("§7제출: §f/lm answer <답>§7 을 치면 됩니다 §8(붙여넣기 Ctrl+V 가능)");
+        player.sendMessage("§7여러 줄이면 여러 번, 다 쓰면 §f/lm submit");
         player.playSound(player.getLocation(), Sound.ITEM_BOOK_PAGE_TURN, 1f, 1f);
     }
 
