@@ -39,6 +39,18 @@ public final class BlockCanvas {
         return true;
     }
 
+    /**
+     * Place a block over ANYTHING (natural ground included), still recording the
+     * original for a clean restore. Use only for deliberate terraforming — a
+     * plaza floor, a building footprint — never scattered over a play area, since
+     * unlike {@link #place} it will overwrite a player's blocks too.
+     */
+    public void placeForce(Location loc, Material material) {
+        Block block = loc.getBlock();
+        remember(loc, block);
+        block.setType(material, false);
+    }
+
     /** Place with explicit BlockData (facing, waterlogged, …). */
     public boolean place(Location loc, BlockData data) {
         Block block = loc.getBlock();

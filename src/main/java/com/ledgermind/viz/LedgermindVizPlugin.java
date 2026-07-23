@@ -394,11 +394,17 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             getLogger().warning("saved village world '" + worldName + "' not found; place it again with /lm village");
             return;
         }
-        village = new AgentVillage(this, new Location(w,
+        Location vloc = new Location(w,
                 getConfig().getDouble("village.x"),
                 getConfig().getDouble("village.y"),
-                getConfig().getDouble("village.z")));
+                getConfig().getDouble("village.z"));
+        village = new AgentVillage(this, vloc);
         if (getConfig().getBoolean("build.towers", true)) village.withTowers(new CreditTower(canvas));
+        if (getConfig().getBoolean("build.town", true)) {
+            new TownBuilder(canvas).build(vloc);
+            getLogger().info("town built at " + vloc.getBlockX() + "," + vloc.getBlockY()
+                    + "," + vloc.getBlockZ() + " (" + canvas.size() + " blocks)");
+        }
     }
 
     private void restoreRigFromConfig() {
@@ -474,6 +480,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 if (village != null) village.clear();
                 village = new AgentVillage(this, loc);
                 if (getConfig().getBoolean("build.towers", true)) village.withTowers(new CreditTower(canvas));
+                if (getConfig().getBoolean("build.town", true)) new TownBuilder(canvas).build(loc);
                 saveLocation("village", loc);
                 startPolling();
                 s.sendMessage("§aAgent village anchored here. Up to " + maxAgents
