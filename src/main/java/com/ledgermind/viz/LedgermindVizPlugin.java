@@ -522,6 +522,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             createTown(m.get("label") == null ? null : String.valueOf(m.get("label")), loc,
                     m.get("token") == null ? "" : String.valueOf(m.get("token")));
         }
+        reconnectRoads(); // ensure every restored town is road-linked
         if (!towns.isEmpty()) {
             getLogger().info(towns.size() + " town(s) restored (" + canvas.size() + " blocks)");
         }
@@ -539,11 +540,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         if (getConfig().getBoolean("build.towers", true)) village.withTowers(new CreditTower(canvas));
         Spectacle spectacle = null;
         if (getConfig().getBoolean("build.town", true)) {
-            TownBuilder tb = new TownBuilder(canvas);
-            // Link this new town to the nearest existing one with a road.
-            Town nearest = nearestTown(loc);
-            if (nearest != null) tb.connectRoad(loc, nearest.center());
-            tb.build(loc);
+            new TownBuilder(canvas).build(loc);
             if (getConfig().getBoolean("build.spectacle", true)) spectacle = new Spectacle(this, loc);
         }
         LedgermindClient.Token token = LedgermindClient.decodeToken(tokenStr);
@@ -554,15 +551,42 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         return town;
     }
 
-    private Town nearestTown(Location loc) {
-        Town best = null;
-        double bestD = Double.MAX_VALUE;
+    /**
+     * (Re)build roads so EVERY town is connected — a minimum spanning tree over
+     * the town centres (per world), rebuilt after any add/remove so the city is
+     * always one connected road network, never left in islands. Idempotent:
+     * BlockCanvas records each road block's original only once.
+     */
+    private void reconnectRoads() {
+        if (!getConfig().getBoolean("build.town", true) || towns.size() < 2) return;
+        TownBuilder tb = new TownBuilder(canvas);
+        // Group towns by world; MST within each group (can't road across worlds).
+        var byWorld = new java.util.HashMap<String, List<Town>>();
         for (Town t : towns) {
-            if (t.center().getWorld() == null || !t.center().getWorld().equals(loc.getWorld())) continue;
-            double d = t.center().distanceSquared(loc);
-            if (d < bestD) { bestD = d; best = t; }
+            if (t.center().getWorld() == null) continue;
+            byWorld.computeIfAbsent(t.center().getWorld().getName(), k -> new java.util.ArrayList<>()).add(t);
         }
-        return best;
+        for (List<Town> group : byWorld.values()) {
+            int n = group.size();
+            if (n < 2) continue;
+            boolean[] inTree = new boolean[n];
+            inTree[0] = true;
+            for (int added = 1; added < n; added++) {
+                double best = Double.MAX_VALUE;
+                int from = -1, to = -1;
+                for (int i = 0; i < n; i++) {
+                    if (!inTree[i]) continue;
+                    for (int j = 0; j < n; j++) {
+                        if (inTree[j]) continue;
+                        double d = group.get(i).center().distanceSquared(group.get(j).center());
+                        if (d < best) { best = d; from = i; to = j; }
+                    }
+                }
+                if (to < 0) break;
+                tb.connectRoad(group.get(to).center(), group.get(from).center());
+                inTree[to] = true;
+            }
+        }
     }
 
     /** Persist all towns to the `villages:` config list. */
@@ -690,6 +714,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 String vlabel = a.length > 1 ? a[1] : "글로벌";
                 boolean first = towns.isEmpty();
                 Town town = createTown(vlabel, p.getLocation().clone(), "");
+                reconnectRoads();
                 saveTowns();
                 startPolling();
                 s.sendMessage("§a'" + town.label + "' 마을을 세웠습니다 §7(글로벌 리더보드)"
@@ -720,6 +745,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                         }
                         boolean first = towns.isEmpty();
                         Town town = createTown(acctLabel, p.getLocation().clone(), token);
+                        reconnectRoads();
                         saveTowns();
                         startPolling();
                         s.sendMessage("§a계정 마을 '" + acctLabel + "' 등록 완료 §7(에이전트 " + town.token.agentId().substring(0, 6) + "… 소속)");
@@ -746,6 +772,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                         towns.remove(found);
                         rawTokens.remove(found);
                         lastGoodAgents.remove(found);
+                        reconnectRoads(); // keep the remaining towns all connected
                         saveTowns();
                         s.sendMessage("§e'" + found.label + "' 마을을 제거했습니다 §7(주민 제거됨; 건물 블록은 /lm clear 로 전체 복구)");
                     }
