@@ -38,6 +38,17 @@ public final class TownBuilder {
     public static Location workshopSpot(Location c) { return c.clone().add(11, 0, 6); }
     public static Location boardSpot(Location c)    { return c.clone().add(-11, 0, 6); }
 
+    // A row of little houses behind the plaza (south, +Z). Agents sleep here.
+    private static final int HOUSE_COUNT = 8;
+    private static final int HOUSE_GAP = 4;
+    private static final int HOUSE_Z = 18;   // just south of the Z_BACK wall
+
+    /** The doorstep of house i (agents cycle through them). */
+    public static Location houseSpot(Location c, int i) {
+        int idx = ((i % HOUSE_COUNT) - HOUSE_COUNT / 2);
+        return c.clone().add(idx * HOUSE_GAP + 1, 0, HOUSE_Z + 1);
+    }
+
     public void build(Location center) {
         World w = center.getWorld();
         if (w == null) return;
@@ -49,6 +60,45 @@ public final class TownBuilder {
         roads(w, cx, cy, cz);
         workshop(w, cx, cy, cz);
         boardKiosk(w, cx, cy, cz);
+        houses(w, cx, cy, cz);
+    }
+
+    /** A row of small houses south of the plaza — one per agent to sleep in at night. */
+    private void houses(World w, int cx, int cy, int cz) {
+        for (int i = 0; i < HOUSE_COUNT; i++) {
+            int idx = i - HOUSE_COUNT / 2;
+            int hx = cx + idx * HOUSE_GAP;
+            int hz = cz + HOUSE_Z;
+            house(w, hx, cy, hz);
+        }
+    }
+
+    /** One 3×3 cabin with a door facing the plaza (−Z), a bed, and a lantern. */
+    private void house(World w, int hx, int cy, int hz) {
+        int x0 = hx - 1, x1 = hx + 1, z0 = hz, z1 = hz + 2;
+        int y0 = cy, y1 = cy + 2;
+        for (int x = x0; x <= x1; x++) {
+            for (int z = z0; z <= z1; z++) {
+                boolean edge = x == x0 || x == x1 || z == z0 || z == z1;
+                canvas.placeForce(at(w, x, y0 - 1, z), Material.SPRUCE_PLANKS); // floor
+                if (edge) {
+                    for (int y = y0; y <= y1; y++) {
+                        Material m = (y == y1) ? Material.SPRUCE_LOG : Material.SPRUCE_PLANKS;
+                        canvas.placeForce(at(w, x, y, z), m);
+                    }
+                } else {
+                    for (int y = y0; y <= y1; y++) canvas.place(at(w, x, y, z), Material.AIR);
+                }
+                canvas.placeForce(at(w, x, y1 + 1, z), Material.SPRUCE_SLAB); // roof
+            }
+        }
+        // door on the plaza-facing wall (−Z, z0), centred
+        canvas.place(at(w, hx, y0, z0), Material.AIR);
+        canvas.place(at(w, hx, y0 + 1, z0), Material.AIR);
+        // interior: bed + lamp + window
+        canvas.place(at(w, hx, y0, hz + 1), Material.RED_BED);
+        canvas.place(at(w, hx, y1, hz + 1), Material.LANTERN);
+        canvas.placeForce(at(w, x1, y0 + 1, hz + 1), Material.GLASS_PANE);
     }
 
     /** Tiled floor one block below plaza level; the centre line is a gold runway. */

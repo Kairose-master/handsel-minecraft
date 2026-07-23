@@ -93,7 +93,7 @@ public final class LedgermindClient {
             String rating = str(a, "creditRating");
             out.add(new Agent(name, num(a, "creditScore"),
                     rating.isEmpty() ? "unrated" : rating,
-                    (int) num(a, "jobsDone"), num(a, "earnedUsd")));
+                    (int) num(a, "jobsDone"), num(a, "earnedUsd"), num(a, "drawnUsd")));
         }
         return out;
     }

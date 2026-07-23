@@ -21,6 +21,8 @@ public final class AgentNpc {
 
     /** Payday interrupt state — a score rise sends the NPC to the bank to celebrate. */
     private enum Pay { NONE, TO_BANK, CELEBRATE }
+    /** What the agent's live status has it doing at its station. */
+    public enum Role { NONE, WORKSHOP, BOARD }
 
     private final Villager villager;
     private final TextDisplay label;
@@ -33,6 +35,10 @@ public final class AgentNpc {
     private Location home;
     /** Where this agent's real job status says it should be (workshop/board), or null. */
     private Location station;
+    private Role role = Role.NONE;
+    private boolean distressed;      // worker of a Disputed job
+    private double drawnUsd;         // outstanding credit drawn (debt), 0 if none
+    private Location house;          // where it sleeps at night
     private Pay pay = Pay.NONE;
     private int celebrateTtl;
     private int wanderCooldown;
@@ -75,8 +81,13 @@ public final class AgentNpc {
         out.add("§6⛏ §f" + a.name() + " §8(순위 #" + (lastRank + 1) + ")");
         out.add("  §7신용점수 " + col + (long) a.creditScore() + " §8· 등급 " + col + a.creditRating());
         out.add("  §7처리한 일 §f" + a.jobsDone() + " §8· 총수익 §2$" + fmt(a.earnedUsd()));
-        String doing = station != null ? "일하는 중/대기 중" : (pay != Pay.NONE ? "은행에서 정산 중" : "광장에서 쉬는 중");
-        out.add("  §8지금: " + doing);
+        if (drawnUsd > 0) out.add("  §6💰 대출(미상환) $" + fmt(drawnUsd));
+        String doing = distressed ? "§c분쟁 처리 대기 중"
+                : role == Role.WORKSHOP ? "작업소에서 작업 중"
+                : role == Role.BOARD ? "게시판에서 일감 대기 중"
+                : pay != Pay.NONE ? "은행에서 정산 중"
+                : "광장에서 쉬는 중";
+        out.add("  §8지금: §7" + doing);
         return out;
     }
 
@@ -98,9 +109,19 @@ public final class AgentNpc {
      * works a job, the board while it has an open bounty out, or null to send it
      * back home. Drives the town's live foot traffic.
      */
-    public void setStation(Location loc) {
+    public void setStation(Location loc, Role role) {
         this.station = loc == null ? null : loc.clone();
+        this.role = role == null ? Role.NONE : role;
     }
+
+    /** Worker of a Disputed job — shows agitation until the dispute clears. */
+    public void setDistressed(boolean d) { this.distressed = d; }
+
+    /** Outstanding credit this agent has drawn (real debt); 0 clears the marker. */
+    public void setDrawn(double usd) { this.drawnUsd = Math.max(0, usd); }
+
+    /** Where this NPC sleeps at night. */
+    public void setHouse(Location loc) { this.house = loc == null ? null : loc.clone(); }
 
     public void update(Agent a, int rank) {
         double delta = a.creditScore() - lastScore;
@@ -130,13 +151,24 @@ public final class AgentNpc {
      * little state machine: walk to the bank on a payday, celebrate, walk home,
      * and otherwise stroll gently around the home spot so the plaza looks alive.
      */
-    public void tickLife(Location bank, int tickSeed) {
+    public void tickLife(Location bank, boolean night, int tickSeed) {
+        var w = villager.getWorld();
+
+        // A disputed worker is agitated wherever it is — angry sparks.
+        if (distressed && w != null && (tickSeed & 7) == 0) {
+            w.spawnParticle(Particle.ANGRY_VILLAGER, villager.getLocation().add(0, 2.3, 0), 2, .2, .2, .2, 0);
+        }
+        // Carrying debt shows a little dripping-gold reminder.
+        if (drawnUsd > 0 && w != null && (tickSeed & 31) == 0) {
+            w.spawnParticle(Particle.FALLING_DUST, villager.getLocation().add(0, 2.0, 0),
+                    2, .2, .1, .2, 0, org.bukkit.Material.GOLD_BLOCK.createBlockData());
+        }
+
         // Payday interrupt takes priority over everything.
         if (pay == Pay.TO_BANK) {
             if (stepToward(bank == null ? null : groundGoal(bank))) {
                 pay = Pay.CELEBRATE;
                 celebrateTtl = CELEBRATE_TICKS;
-                var w = villager.getWorld();
                 if (w != null) {
                     Location at = villager.getLocation().add(0, 1.0, 0);
                     w.spawnParticle(Particle.HAPPY_VILLAGER, at, 20, .4, .5, .4, 0);
@@ -150,6 +182,12 @@ public final class AgentNpc {
             return;
         }
 
+        // At night everyone turns in — the house wins over the day's station.
+        if (night && house != null) {
+            stepToward(house);
+            return;
+        }
+
         // Otherwise head to where our real job status says we belong.
         Location target = station != null ? station : home;
         if (!arrived(target)) {
@@ -157,13 +195,15 @@ public final class AgentNpc {
             wanderGoal = null;
             return;
         }
-        // Standing at our post: a working agent flicks the occasional spark;
-        // an idle one strolls a little so nobody's a statue.
+        // At our post: a worker hammers at the anvil, a waiting requester glances about.
         if (station != null) {
-            if ((tickSeed & 15) == 0) {
-                var w = villager.getWorld();
-                if (w != null) w.spawnParticle(Particle.ENCHANT,
-                        villager.getLocation().add(0, 1.4, 0), 3, .2, .3, .2, .3);
+            if (w != null && role == Role.WORKSHOP && (tickSeed % 12) == 0) {
+                Location at = villager.getLocation().add(0, 1.1, 0);
+                w.spawnParticle(Particle.CRIT, at, 6, .3, .2, .3, .1);       // hammer sparks
+                w.playSound(at, Sound.BLOCK_ANVIL_USE, 0.35f, 1.4f);
+                villager.swingMainHand();
+            } else if (w != null && role == Role.BOARD && (tickSeed & 31) == 0) {
+                w.spawnParticle(Particle.ENCHANT, villager.getLocation().add(0, 1.4, 0), 3, .2, .3, .2, .3);
             }
             return;
         }
@@ -239,6 +279,8 @@ public final class AgentNpc {
               .append(" §8· §7").append(a.jobsDone())
               .append(a.jobsDone() == 1 ? " job" : " jobs");
         }
+        if (distressed) sb.append("\n§c⚠ 분쟁 중");
+        if (drawnUsd > 0) sb.append("\n§6💰 대출 $").append(fmt(drawnUsd));
         label.setText(sb.toString());
     }
 

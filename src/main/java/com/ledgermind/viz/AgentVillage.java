@@ -61,11 +61,14 @@ public final class AgentVillage {
 
             AgentNpc npc = npcs.get(a.name());
             if (npc == null || npc.isDead()) {
-                npcs.put(a.name(), new AgentNpc(loc, a, i));
+                npc = new AgentNpc(loc, a, i);
+                npcs.put(a.name(), npc);
             } else {
                 npc.setHome(loc);   // don't yank a walking NPC; it heads back when idle
                 npc.update(a, i);
             }
+            npc.setHouse(TownBuilder.houseSpot(center, i));
+            npc.setDrawn(a.drawnUsd());
             if (towers != null) towers.update(loc, a);
             i++;
         }
@@ -87,30 +90,43 @@ public final class AgentVillage {
      * Paydays (score rises) still interrupt with a walk to the bank.
      */
     public void assignRoles(List<Job> jobs) {
-        java.util.Map<String, Location> stationByName = new java.util.HashMap<>();
         Location workshop = TownBuilder.workshopSpot(center);
         Location board = TownBuilder.boardSpot(center);
+        Map<String, AgentNpc.Role> roleByName = new java.util.HashMap<>();
+        Set<String> disputed = new HashSet<>();
         for (Job j : jobs) {
             String status = j.status() == null ? "" : j.status();
             if (!j.workerName().isBlank()
                     && (status.equalsIgnoreCase("Accepted") || status.equalsIgnoreCase("Submitted"))) {
-                stationByName.put(j.workerName(), workshop);       // actively working
+                roleByName.put(j.workerName(), AgentNpc.Role.WORKSHOP);      // actively working
             } else if (!j.requesterName().isBlank() && status.equalsIgnoreCase("Open")) {
-                stationByName.putIfAbsent(j.requesterName(), board); // waiting for a worker
+                roleByName.putIfAbsent(j.requesterName(), AgentNpc.Role.BOARD); // waiting for a worker
+            }
+            if (!j.workerName().isBlank() && status.equalsIgnoreCase("Disputed")) {
+                disputed.add(j.workerName());
             }
         }
         for (Map.Entry<String, AgentNpc> e : npcs.entrySet()) {
-            e.getValue().setStation(stationByName.get(e.getKey())); // null → head home
+            AgentNpc.Role r = roleByName.getOrDefault(e.getKey(), AgentNpc.Role.NONE);
+            Location spot = r == AgentNpc.Role.WORKSHOP ? workshop
+                    : r == AgentNpc.Role.BOARD ? board : null;
+            e.getValue().setStation(spot, r);
+            e.getValue().setDistressed(disputed.contains(e.getKey()));
         }
     }
 
     /** Drive the living village — one movement step for every NPC. Called on a fast timer. */
     public void tickLife(int tick) {
         if (npcs.isEmpty()) return;
-        Location bank = center.clone(); // the 🏦 sign sits above the plaza centre
+        Location bank = TownBuilder.bankSpot(center);
+        boolean night = false;
+        if (center.getWorld() != null) {
+            long t = center.getWorld().getTime();   // 0..24000; ~13000-23000 is night
+            night = t >= 13000 && t <= 23000;
+        }
         int seed = tick;
         for (AgentNpc npc : npcs.values()) {
-            if (!npc.isDead()) npc.tickLife(bank, seed);
+            if (!npc.isDead()) npc.tickLife(bank, night, seed);
             seed += 37; // decorrelate each NPC's idle wander
         }
     }
