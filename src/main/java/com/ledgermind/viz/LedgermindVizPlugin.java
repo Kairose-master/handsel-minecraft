@@ -281,6 +281,10 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
 
                 for (Town t : towns) {
                     List<Agent> ags = townAgents.getOrDefault(t, List.of());
+                    // On an API hiccup (empty/failed fetch) keep the last good roster
+                    // so NPCs don't vanish — and respawn if a chunk unload culled them.
+                    if (!ags.isEmpty()) lastGoodAgents.put(t, ags);
+                    else ags = lastGoodAgents.getOrDefault(t, List.of());
                     if (!ags.isEmpty()) t.village.render(ags, vault);
                     if (!polledRoleJobs.isEmpty()) t.village.assignRoles(polledRoleJobs);
                 }
@@ -562,6 +566,8 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     /** We only kept the decoded token; re-encode isn't needed — store nothing sensitive we can't rebuild.
      *  The raw token was given at placement time; keep it in a side map to persist. */
     private final java.util.Map<Town, String> rawTokens = new java.util.HashMap<>();
+    /** Last non-empty roster per town, so an API outage doesn't wipe the NPCs. */
+    private final java.util.Map<Town, List<Agent>> lastGoodAgents = new java.util.HashMap<>();
     private String tokenStringFor(Town t) { return rawTokens.getOrDefault(t, ""); }
 
     private void restoreRigFromConfig() {

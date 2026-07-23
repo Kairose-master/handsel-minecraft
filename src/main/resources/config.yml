@@ -5,7 +5,7 @@
 base-url: "https://ai-agent-credit-dashboard.vercel.app"
 
 # how often to poll the public API (seconds, minimum 5)
-poll-seconds: 15
+poll-seconds: 60   # DB 전송량 절약: 마을 폴링 주기 (기본 60초)
 
 # how many open jobs to show on the board
 max-jobs: 8
