@@ -28,6 +28,8 @@ public final class AgentNpc {
     private double shownDelta;
     private int deltaTtl;
 
+    private Agent lastAgent;
+    private int lastRank;
     private Location home;
     /** Where this agent's real job status says it should be (workshop/board), or null. */
     private Location station;
@@ -53,8 +55,29 @@ public final class AgentNpc {
             td.setPersistent(false);
         });
         lastScore = a.creditScore();
+        lastAgent = a;
+        lastRank = rank;
         write(a, rank);
         joinFx();
+    }
+
+    /** True if this NPC's villager is the clicked entity. */
+    public boolean matches(org.bukkit.entity.Entity e) {
+        return e != null && villager.getUniqueId().equals(e.getUniqueId());
+    }
+
+    /** The live profile lines for this agent, for a right-click readout. */
+    public java.util.List<String> profileLines() {
+        Agent a = lastAgent;
+        if (a == null) return java.util.List.of("§7(정보 로딩 중)");
+        String col = tierColor(a.creditRating(), a.creditScore());
+        java.util.List<String> out = new java.util.ArrayList<>();
+        out.add("§6⛏ §f" + a.name() + " §8(순위 #" + (lastRank + 1) + ")");
+        out.add("  §7신용점수 " + col + (long) a.creditScore() + " §8· 등급 " + col + a.creditRating());
+        out.add("  §7처리한 일 §f" + a.jobsDone() + " §8· 총수익 §2$" + fmt(a.earnedUsd()));
+        String doing = station != null ? "일하는 중/대기 중" : (pay != Pay.NONE ? "은행에서 정산 중" : "광장에서 쉬는 중");
+        out.add("  §8지금: " + doing);
+        return out;
     }
 
     /**
@@ -97,6 +120,8 @@ public final class AgentNpc {
             deltaTtl--;
         }
         lastScore = a.creditScore();
+        lastAgent = a;
+        lastRank = rank;
         write(a, rank);
     }
 

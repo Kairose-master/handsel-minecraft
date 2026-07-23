@@ -9,6 +9,9 @@ import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -99,6 +102,49 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
         if (scoreboard != null) scoreboard.show(e.getPlayer());
+    }
+
+    /** Right-click an agent villager → its live Ledgermind profile in chat. */
+    @EventHandler
+    public void onClickAgent(PlayerInteractEntityEvent e) {
+        if (village == null) return;
+        AgentNpc npc = village.npcForEntity(e.getRightClicked());
+        if (npc == null) return;
+        e.setCancelled(true); // no villager trade UI
+        npc.profileLines().forEach(e.getPlayer()::sendMessage);
+    }
+
+    /** Right-click the board kiosk → the open-jobs list, same as /lm jobs. */
+    @EventHandler
+    public void onClickBoard(PlayerInteractEvent e) {
+        if (village == null || e.getClickedBlock() == null) return;
+        if (e.getAction() != Action.RIGHT_CLICK_BLOCK) return;
+        if (!village.isBoardKiosk(e.getClickedBlock().getLocation())) return;
+        e.getPlayer().sendMessage("§6📋 §f게시판 — 열린 일감");
+        showJobs(e.getPlayer(), 6);
+    }
+
+    /** Shared open-jobs readout used by /lm jobs and the board kiosk. */
+    private void showJobs(CommandSender to, int n) {
+        getServer().getScheduler().runTaskAsynchronously(this, () -> {
+            List<Job> jobs;
+            try {
+                jobs = client.fetchOpenJobs(n);
+            } catch (Exception ex) {
+                getServer().getScheduler().runTask(this, () -> to.sendMessage("§cjob feed failed: " + ex.getMessage()));
+                return;
+            }
+            getServer().getScheduler().runTask(this, () -> {
+                if (jobs.isEmpty()) { to.sendMessage("§7no open jobs right now"); return; }
+                to.sendMessage("§7받으려면 §f/lm take <번호>");
+                for (Job j : jobs) {
+                    to.sendMessage("§e#" + j.id() + " §a$" + (long) j.rewardUsd()
+                            + " §f" + j.title() + " §8· " + j.verification()
+                            + (j.requesterName() != null && !j.requesterName().isEmpty()
+                                ? " §8by §7" + j.requesterName() : ""));
+                }
+            });
+        });
     }
 
     /** The living-village mover: every 2 ticks, walk each NPC one step. */
@@ -712,30 +758,8 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             }
             case "jobs" -> {
                 int n = a.length > 1 ? clamp(a[1], 5) : 5;
-                getServer().getScheduler().runTaskAsynchronously(this, () -> {
-                    List<Job> jobs;
-                    try {
-                        jobs = client.fetchOpenJobs(n);
-                    } catch (Exception e) {
-                        getServer().getScheduler().runTask(this,
-                                () -> s.sendMessage("§cjob feed failed: " + e.getMessage()));
-                        return;
-                    }
-                    getServer().getScheduler().runTask(this, () -> {
-                        if (jobs.isEmpty()) {
-                            s.sendMessage("§7no open jobs right now");
-                            return;
-                        }
-                        s.sendMessage("§6⛏ §fLedgermind — open jobs §7(받으려면 /lm take <번호>)");
-                        for (Job j : jobs) {
-                            s.sendMessage("§e#" + j.id() + " §a$" + (long) j.rewardUsd()
-                                    + " §f" + j.title()
-                                    + " §8· " + j.verification()
-                                    + (j.requesterName() != null && !j.requesterName().isEmpty()
-                                        ? " §8by §7" + j.requesterName() : ""));
-                        }
-                    });
-                });
+                s.sendMessage("§6⛏ §fLedgermind — open jobs");
+                showJobs(s, n);
             }
             case "on" -> {
                 startPolling();

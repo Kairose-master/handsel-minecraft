@@ -213,6 +213,22 @@ public final class AgentVillage {
 
     public int size() { return npcs.size(); }
 
+    /** The agent NPC a clicked entity belongs to, or null. */
+    public AgentNpc npcForEntity(org.bukkit.entity.Entity e) {
+        for (AgentNpc npc : npcs.values()) if (npc.matches(e)) return npc;
+        return null;
+    }
+
+    /** True if a clicked block is part of the town's board kiosk (west of centre). */
+    public boolean isBoardKiosk(Location block) {
+        if (block.getWorld() == null || !block.getWorld().equals(center.getWorld())) return false;
+        Location spot = TownBuilder.boardSpot(center);
+        double dx = block.getX() - spot.getX();
+        double dz = block.getZ() - spot.getZ();
+        double dy = block.getY() - spot.getY();
+        return Math.abs(dx) <= 3 && dz >= -1 && dz <= 4 && dy >= -1 && dy <= 5;
+    }
+
     public void clear() {
         npcs.values().forEach(AgentNpc::remove);
         npcs.clear();
