@@ -7,13 +7,16 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.List;
 import java.util.Locale;
 
-public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor {
+public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor, Listener {
 
     private static final List<String> SUBS =
             List.of("board", "village", "rig", "mine", "take", "answer", "submit",
@@ -28,8 +31,14 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     private QuestBoard questBoard;
     private MineShaft mineShaft;
     private final PlayerLane playerLane = new PlayerLane(this);
+    private Scoreboard scoreboard;
+    private Ticker ticker;
     private BukkitTask poller;
     private BukkitTask minerTask;
+    private BukkitTask tickerTask;
+    private volatile List<Agent> lastAgents = List.of();
+    private volatile int lastOpenJobs;
+    private volatile String lastVaultLine;
     private int pollSeconds;
     private int maxJobs;
     private int maxAgents;
@@ -44,6 +53,8 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         restoreBoardFromConfig();
         restoreVillageFromConfig();
         restoreRigFromConfig();
+        setupHud();
+        getServer().getPluginManager().registerEvents(this, this);
         startPolling();
         if (miner != null && getConfig().getBoolean("mining.autostart", false)) startMining();
         getLogger().info("LedgermindViz enabled - polling " + client.baseUrl()
@@ -54,11 +65,46 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     public void onDisable() {
         stopPolling();
         stopMining();
+        if (tickerTask != null) tickerTask.cancel();
+        if (ticker != null) ticker.clear();
+        if (scoreboard != null) scoreboard.clear();
         if (board != null) board.clear();
         if (village != null) village.clear();
         if (rig != null) rig.clear();
         if (mineShaft != null) mineShaft.clear();
         canvas.restoreAll(); // never leave built blocks behind on shutdown
+    }
+
+    // --- HUD: sidebar scoreboard + actionbar ticker ------------------------
+
+    private void setupHud() {
+        if (getConfig().getBoolean("hud.scoreboard", true)) {
+            scoreboard = new Scoreboard();
+            for (Player p : getServer().getOnlinePlayers()) scoreboard.show(p);
+        }
+        if (getConfig().getBoolean("hud.ticker", true)) {
+            ticker = new Ticker();
+            long every = Math.max(20L, getConfig().getLong("hud.ticker-seconds", 3) * 20L);
+            tickerTask = getServer().getScheduler().runTaskTimer(this,
+                    () -> ticker.tick(System.currentTimeMillis()), every, every);
+        }
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent e) {
+        if (scoreboard != null) scoreboard.show(e.getPlayer());
+    }
+
+    /** Re-render the HUD from the latest poll (main thread). */
+    private void refreshHud() {
+        if (scoreboard != null && !lastAgents.isEmpty()) {
+            scoreboard.render(lastAgents, lastOpenJobs, lastVaultLine, null);
+        }
+        if (ticker != null) {
+            String top = lastAgents.isEmpty() ? null
+                    : "1위 " + lastAgents.get(0).name() + " " + (long) lastAgents.get(0).creditScore();
+            ticker.setAmbient(top, lastVaultLine);
+        }
     }
 
     private void loadSettings() {
@@ -96,21 +142,23 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         stopPolling();
         long ticks = pollSeconds * 20L;
         poller = getServer().getScheduler().runTaskTimerAsynchronously(this, () -> {
-            if (board == null && village == null) return; // nothing to render into yet
+            boolean needJobs = board != null || scoreboard != null || ticker != null;
+            boolean needAgents = village != null || scoreboard != null || ticker != null;
+            if (!needJobs && !needAgents) return; // nothing wants data yet
 
             List<Job> jobs = List.of();
-            if (board != null) {
+            if (needJobs) {
                 try {
-                    jobs = client.fetchOpenJobs(maxJobs);
+                    jobs = client.fetchOpenJobs(Math.max(maxJobs, 8));
                 } catch (Exception e) {
                     getLogger().warning("job poll failed: " + e.getMessage());
-                    return;
+                    if (board != null) return; // board can't render without jobs
                 }
             }
             List<Agent> agents = List.of();
-            if (village != null) {
+            if (needAgents) {
                 try {
-                    agents = client.fetchAgents(maxAgents);
+                    agents = client.fetchAgents(Math.max(maxAgents, 5));
                 } catch (Exception e) {
                     getLogger().warning("agent poll failed: " + e.getMessage());
                 }
@@ -121,12 +169,21 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             final List<Job> polledJobs = jobs;
             final List<Agent> polledAgents = agents;
             getServer().getScheduler().runTask(this, () -> {
+                // Feed the always-on HUD first (works with no board/village placed).
+                if (!polledAgents.isEmpty()) lastAgents = polledAgents;
+                lastOpenJobs = polledJobs.size();
+                lastVaultLine = vault;
+                refreshHud();
+
                 if (village != null && !polledAgents.isEmpty()) village.render(polledAgents, vault);
                 if (board == null) return;
                 List<Job> filled = board.render(polledJobs, vault);
                 if (questBoard != null) questBoard.render(polledJobs, vault);
                 for (Job j : filled) {
                     if (broadcastFills) broadcastFill(j);
+                    if (ticker != null) ticker.push("§a💰 일감 #" + j.id() + " ($" + (long) j.rewardUsd()
+                            + ") 완료" + (j.workerName() != null && !j.workerName().isEmpty()
+                                ? " — " + j.workerName() : ""), System.currentTimeMillis());
                     if (questBoard != null && getConfig().getBoolean("build.celebrate", true)) {
                         questBoard.celebrate(j);
                     }

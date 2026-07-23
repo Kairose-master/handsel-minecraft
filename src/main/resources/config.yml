@@ -80,3 +80,12 @@ build:
   quest-lectern: true
   # 일감이 채워지면 불꽃놀이 + 종소리 + 2초짜리 레드스톤 신호
   celebrate: true
+
+# ─── 화면 HUD (항상 표시) ─────────────────────────────────────────────────
+hud:
+  # 오른쪽 사이드바 실시간 순위판 (자막)
+  scoreboard: true
+  # 화면 하단 액션바 이벤트 티커
+  ticker: true
+  # 티커가 몇 초마다 다음 헤드라인으로 넘어갈지
+  ticker-seconds: 3
