@@ -27,13 +27,13 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
 
     private LedgermindClient client;
     private JobBoard board;
-    private AgentVillage village;
+    /** One town per Ledgermind account, road-linked into a city. */
+    private final List<Town> towns = new java.util.ArrayList<>();
     private Miner miner;
     private MinerRig rig;
     private final BlockCanvas canvas = new BlockCanvas();
     private QuestBoard questBoard;
     private MineShaft mineShaft;
-    private Spectacle spectacle;
     private final PlayerLane playerLane = new PlayerLane(this);
     private Scoreboard scoreboard;
     private Ticker ticker;
@@ -58,7 +58,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         saveDefaultConfig();
         loadSettings();
         restoreBoardFromConfig();
-        restoreVillageFromConfig();
+        restoreTownsFromConfig();
         restoreRigFromConfig();
         setupHud();
         getServer().getPluginManager().registerEvents(this, this);
@@ -75,11 +75,10 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         stopMining();
         if (lifeTask != null) lifeTask.cancel();
         if (tickerTask != null) tickerTask.cancel();
-        if (spectacle != null) spectacle.allOff();
+        for (Town t : towns) { if (t.spectacle != null) t.spectacle.allOff(); t.village.clear(); }
         if (ticker != null) ticker.clear();
         if (scoreboard != null) scoreboard.clear();
         if (board != null) board.clear();
-        if (village != null) village.clear();
         if (rig != null) rig.clear();
         if (mineShaft != null) mineShaft.clear();
         canvas.restoreAll(); // never leave built blocks behind on shutdown
@@ -109,28 +108,35 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     /** Right-click an agent villager → its live Ledgermind profile in chat. */
     @EventHandler
     public void onClickAgent(PlayerInteractEntityEvent e) {
-        if (village == null) return;
-        AgentNpc npc = village.npcForEntity(e.getRightClicked());
-        if (npc == null) return;
-        e.setCancelled(true); // no villager trade UI
-        npc.profileLines().forEach(e.getPlayer()::sendMessage);
+        for (Town t : towns) {
+            AgentNpc npc = t.village.npcForEntity(e.getRightClicked());
+            if (npc != null) {
+                e.setCancelled(true); // no villager trade UI
+                if (t.label != null) e.getPlayer().sendMessage("§8[" + t.label + " 마을]");
+                npc.profileLines().forEach(e.getPlayer()::sendMessage);
+                return;
+            }
+        }
     }
 
-    /** Right-click the board kiosk → jobs; the FULL-POWER lever → the show. */
+    /** Right-click a board kiosk → jobs; a FULL-POWER lever → that town's show. */
     @EventHandler
     public void onClickBoard(PlayerInteractEvent e) {
         if (e.getClickedBlock() == null || e.getAction() != Action.RIGHT_CLICK_BLOCK) return;
         Location blk = e.getClickedBlock().getLocation();
-        if (spectacle != null && spectacle.isLever(blk)) {
-            spectacle.fullPower(getConfig().getInt("spectacle-seconds", 30));
-            getServer().broadcast(Component.text(
-                    "⚡ " + e.getPlayer().getName() + " 님이 공장을 §l풀가동§r§a 시켰습니다!",
-                    NamedTextColor.GREEN));
-            return;
-        }
-        if (village != null && village.isBoardKiosk(blk)) {
-            e.getPlayer().sendMessage("§6📋 §f게시판 — 열린 일감");
-            showJobs(e.getPlayer(), 6);
+        for (Town t : towns) {
+            if (t.spectacle != null && t.spectacle.isLever(blk)) {
+                t.spectacle.fullPower(getConfig().getInt("spectacle-seconds", 30));
+                getServer().broadcast(Component.text(
+                        "⚡ " + e.getPlayer().getName() + " 님이 " + t.label
+                                + " 공장을 §l풀가동§r§a 시켰습니다!", NamedTextColor.GREEN));
+                return;
+            }
+            if (t.village.isBoardKiosk(blk)) {
+                e.getPlayer().sendMessage("§6📋 §f" + t.label + " 게시판 — 열린 일감");
+                showJobs(e.getPlayer(), 6);
+                return;
+            }
         }
     }
 
@@ -163,8 +169,10 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         if (!getConfig().getBoolean("village-life", true)) return;
         lifeTask = getServer().getScheduler().runTaskTimer(this, () -> {
             int t = lifeTick++;
-            if (village != null) village.tickLife(t);
-            if (spectacle != null) spectacle.tick(t);
+            for (Town town : towns) {
+                town.village.tickLife(t);
+                if (town.spectacle != null) town.spectacle.tick(t);
+            }
         }, 2L, 2L);
     }
 
@@ -215,8 +223,9 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         stopPolling();
         long ticks = pollSeconds * 20L;
         poller = getServer().getScheduler().runTaskTimerAsynchronously(this, () -> {
+            boolean haveTowns = !towns.isEmpty();
             boolean needJobs = board != null || scoreboard != null || ticker != null;
-            boolean needAgents = village != null || scoreboard != null || ticker != null;
+            boolean needAgents = haveTowns || scoreboard != null || ticker != null;
             if (!needJobs && !needAgents) return; // nothing wants data yet
 
             List<Job> jobs = List.of();
@@ -228,17 +237,29 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                     if (board != null) return; // board can't render without jobs
                 }
             }
-            List<Agent> agents = List.of();
+            // Global leaderboard powers the HUD and any token-less town.
+            List<Agent> globalAgents = List.of();
             if (needAgents) {
                 try {
-                    agents = client.fetchAgents(Math.max(maxAgents, 5));
+                    globalAgents = client.fetchAgents(Math.max(maxAgents, 5));
                 } catch (Exception e) {
                     getLogger().warning("agent poll failed: " + e.getMessage());
                 }
             }
-            // All-status jobs drive the town's live foot traffic (who's working / requesting).
+            // Per-account agents for each town scoped to a token ("1 village = 1 account").
+            java.util.Map<Town, List<Agent>> townAgents = new java.util.HashMap<>();
+            for (Town t : towns) {
+                if (t.token == null) { townAgents.put(t, globalAgents); continue; }
+                try {
+                    townAgents.put(t, client.fetchMyAgents(t.token));
+                } catch (Exception e) {
+                    getLogger().warning("town '" + t.label + "' agent poll failed: " + e.getMessage());
+                    townAgents.put(t, List.of());
+                }
+            }
+            // All-status jobs drive every town's live foot traffic (who's working / requesting).
             List<Job> roleJobs = List.of();
-            if (village != null) {
+            if (haveTowns) {
                 try {
                     roleJobs = client.fetchJobs("all", 20);
                 } catch (Exception e) {
@@ -249,37 +270,38 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
 
             // hop back to the main thread for every world/entity mutation
             final List<Job> polledJobs = jobs;
-            final List<Agent> polledAgents = agents;
+            final List<Agent> polledGlobal = globalAgents;
             final List<Job> polledRoleJobs = roleJobs;
             getServer().getScheduler().runTask(this, () -> {
-                // Feed the always-on HUD first (works with no board/village placed).
-                if (!polledAgents.isEmpty()) lastAgents = polledAgents;
+                // Feed the always-on HUD from the global leaderboard.
+                if (!polledGlobal.isEmpty()) lastAgents = polledGlobal;
                 lastOpenJobs = polledJobs.size();
                 lastVaultLine = vault;
                 refreshHud();
 
-                if (village != null && !polledAgents.isEmpty()) village.render(polledAgents, vault);
-                if (village != null && !polledRoleJobs.isEmpty()) village.assignRoles(polledRoleJobs);
+                for (Town t : towns) {
+                    List<Agent> ags = townAgents.getOrDefault(t, List.of());
+                    if (!ags.isEmpty()) t.village.render(ags, vault);
+                    if (!polledRoleJobs.isEmpty()) t.village.assignRoles(polledRoleJobs);
+                }
                 if (board == null) return;
                 List<Job> filled = board.render(polledJobs, vault);
                 if (questBoard != null) questBoard.render(polledJobs, vault);
                 for (Job j : filled) {
                     if (broadcastFills) broadcastFill(j);
-                    if (spectacle != null) spectacle.pulse();
+                    for (Town t : towns) {
+                        if (t.spectacle != null) t.spectacle.pulse();
+                        // requester/worker NPCs may live in any town — animate wherever they resolve
+                        t.village.animatePayment(
+                                firstNonBlank(j.requesterName(), j.requesterLabel()),
+                                firstNonBlank(j.workerName(), j.workerLabel()),
+                                board.anchor());
+                    }
                     if (ticker != null) ticker.push("§a💰 일감 #" + j.id() + " ($" + (long) j.rewardUsd()
                             + ") 완료" + (j.workerName() != null && !j.workerName().isEmpty()
                                 ? " — " + j.workerName() : ""), System.currentTimeMillis());
                     if (questBoard != null && getConfig().getBoolean("build.celebrate", true)) {
                         questBoard.celebrate(j);
-                    }
-                    if (village != null) {
-                        // Prefer the agent display names (they key the NPCs); the
-                        // wallet labels never match one, so they're only a last
-                        // resort before the board-burst fallback (BUILD_PLAN §17).
-                        village.animatePayment(
-                                firstNonBlank(j.requesterName(), j.requesterLabel()),
-                                firstNonBlank(j.workerName(), j.workerLabel()),
-                                board.anchor());
                     }
                 }
             });
@@ -456,27 +478,91 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         saveLocation("board", loc);
     }
 
-    private void restoreVillageFromConfig() {
-        String worldName = getConfig().getString("village.world");
-        if (worldName == null) return;
-        var w = getServer().getWorld(worldName);
-        if (w == null) {
-            getLogger().warning("saved village world '" + worldName + "' not found; place it again with /lm village");
-            return;
+    /** Rebuild every saved town (config list `villages:`), plus a legacy single `village:`. */
+    private void restoreTownsFromConfig() {
+        // Legacy single-village config → migrate into the list on next save.
+        if (getConfig().isSet("village.world")) {
+            var w = getServer().getWorld(getConfig().getString("village.world"));
+            if (w != null) {
+                createTown(null, new Location(w, getConfig().getDouble("village.x"),
+                        getConfig().getDouble("village.y"), getConfig().getDouble("village.z")),
+                        getConfig().getString("village.token", ""));
+            }
         }
-        Location vloc = new Location(w,
-                getConfig().getDouble("village.x"),
-                getConfig().getDouble("village.y"),
-                getConfig().getDouble("village.z"));
-        village = new AgentVillage(this, vloc);
-        if (getConfig().getBoolean("build.towers", true)) village.withTowers(new CreditTower(canvas));
-        if (getConfig().getBoolean("build.town", true)) {
-            new TownBuilder(canvas).build(vloc);
-            if (getConfig().getBoolean("build.spectacle", true)) spectacle = new Spectacle(this, vloc);
-            getLogger().info("town built at " + vloc.getBlockX() + "," + vloc.getBlockY()
-                    + "," + vloc.getBlockZ() + " (" + canvas.size() + " blocks)");
+        var list = getConfig().getMapList("villages");
+        for (var m : list) {
+            Object wn = m.get("world");
+            var w = wn == null ? null : getServer().getWorld(String.valueOf(wn));
+            if (w == null) continue;
+            Location loc = new Location(w, asD(m.get("x")), asD(m.get("y")), asD(m.get("z")));
+            createTown(m.get("label") == null ? null : String.valueOf(m.get("label")), loc,
+                    m.get("token") == null ? "" : String.valueOf(m.get("token")));
+        }
+        if (!towns.isEmpty()) {
+            getLogger().info(towns.size() + " town(s) restored (" + canvas.size() + " blocks)");
         }
     }
+
+    private static double asD(Object o) { return o instanceof Number n ? n.doubleValue() : 0; }
+
+    /**
+     * Build one town at {@code loc}: village + credit towers + town structures +
+     * spectacle, road-linked to the nearest existing town. A non-blank token
+     * scopes it to that account ("1 village = 1 account").
+     */
+    private Town createTown(String label, Location loc, String tokenStr) {
+        AgentVillage village = new AgentVillage(this, loc);
+        if (getConfig().getBoolean("build.towers", true)) village.withTowers(new CreditTower(canvas));
+        Spectacle spectacle = null;
+        if (getConfig().getBoolean("build.town", true)) {
+            TownBuilder tb = new TownBuilder(canvas);
+            // Link this new town to the nearest existing one with a road.
+            Town nearest = nearestTown(loc);
+            if (nearest != null) tb.connectRoad(loc, nearest.center());
+            tb.build(loc);
+            if (getConfig().getBoolean("build.spectacle", true)) spectacle = new Spectacle(this, loc);
+        }
+        LedgermindClient.Token token = LedgermindClient.decodeToken(tokenStr);
+        String name = label != null ? label : (token != null ? shorten(token.agentId()) : "글로벌");
+        Town town = new Town(name, village, spectacle, token);
+        towns.add(town);
+        if (tokenStr != null && !tokenStr.isBlank()) rawTokens.put(town, tokenStr);
+        return town;
+    }
+
+    private Town nearestTown(Location loc) {
+        Town best = null;
+        double bestD = Double.MAX_VALUE;
+        for (Town t : towns) {
+            if (t.center().getWorld() == null || !t.center().getWorld().equals(loc.getWorld())) continue;
+            double d = t.center().distanceSquared(loc);
+            if (d < bestD) { bestD = d; best = t; }
+        }
+        return best;
+    }
+
+    /** Persist all towns to the `villages:` config list. */
+    private void saveTowns() {
+        var list = new java.util.ArrayList<java.util.Map<String, Object>>();
+        for (Town t : towns) {
+            var m = new java.util.LinkedHashMap<String, Object>();
+            m.put("label", t.label);
+            m.put("world", t.center().getWorld().getName());
+            m.put("x", t.center().getX());
+            m.put("y", t.center().getY());
+            m.put("z", t.center().getZ());
+            if (t.token != null) m.put("token", tokenStringFor(t));
+            list.add(m);
+        }
+        getConfig().set("villages", list);
+        getConfig().set("village", null); // drop the legacy single entry
+        saveConfig();
+    }
+
+    /** We only kept the decoded token; re-encode isn't needed — store nothing sensitive we can't rebuild.
+     *  The raw token was given at placement time; keep it in a side map to persist. */
+    private final java.util.Map<Town, String> rawTokens = new java.util.HashMap<>();
+    private String tokenStringFor(Town t) { return rawTokens.getOrDefault(t, ""); }
 
     private void restoreRigFromConfig() {
         String worldName = getConfig().getString("rig.world");
@@ -547,18 +633,23 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                     s.sendMessage("players only - stand where the plaza should go");
                     return true;
                 }
+                // /lm village [label] [token] — a new town for one account, road-linked.
+                // With no token it mirrors the global leaderboard; with a token it shows
+                // just that account's agents ("1 village = 1 account").
+                String vlabel = a.length > 1 ? a[1] : null;
+                String vtoken = a.length > 2 ? a[2] : (a.length > 1 && a[1].length() > 40 ? a[1] : "");
+                if (vtoken.length() > 40 && vlabel != null && vlabel.equals(vtoken)) vlabel = null; // a lone token
                 Location loc = p.getLocation().clone();
-                if (village != null) village.clear();
-                village = new AgentVillage(this, loc);
-                if (getConfig().getBoolean("build.towers", true)) village.withTowers(new CreditTower(canvas));
-                if (getConfig().getBoolean("build.town", true)) {
-                    new TownBuilder(canvas).build(loc);
-                    if (getConfig().getBoolean("build.spectacle", true)) spectacle = new Spectacle(this, loc);
-                }
-                saveLocation("village", loc);
+                boolean first = towns.isEmpty();
+                Town town = createTown(vlabel, loc, vtoken);
+                saveTowns();
                 startPolling();
-                s.sendMessage("§aAgent village anchored here. Up to " + maxAgents
-                        + " agents appear within " + pollSeconds + "s.");
+                s.sendMessage("§a'" + town.label + "' 마을을 세웠습니다"
+                        + (town.token != null ? " §7(계정 전용)" : " §7(글로벌)")
+                        + (first ? "." : " — 기존 마을과 도로로 연결됨."));
+                if (vtoken != null && vtoken.length() > 40) {
+                    s.sendMessage("§8토큰은 채팅에 남습니다 — 테스트 후 대시보드에서 재발급을 권장합니다.");
+                }
             }
             case "rig" -> {
                 if (!(s instanceof Player p)) {
@@ -786,13 +877,18 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 stopPolling();
                 s.sendMessage("§epolling off");
             }
-            case "status" -> s.sendMessage("§7board=" + (board != null)
-                    + " village=" + (village != null ? village.size() + " npcs" : "false")
-                    + " polling=" + (poller != null)
-                    + " every=" + pollSeconds + "s"
-                    + " maxJobs=" + maxJobs + " maxAgents=" + maxAgents
-                    + " miner=" + (miner == null ? "none" : miner.state().toString())
-                    + " url=" + client.baseUrl());
+            case "status" -> {
+                int npcs = 0;
+                for (Town t : towns) npcs += t.village.size();
+                s.sendMessage("§7board=" + (board != null)
+                        + " towns=" + towns.size() + " (" + npcs + " npcs)"
+                        + " polling=" + (poller != null)
+                        + " every=" + pollSeconds + "s"
+                        + " miner=" + (miner == null ? "none" : miner.state().toString())
+                        + " url=" + client.baseUrl());
+                for (Town t : towns) s.sendMessage("§8  · " + t.label
+                        + (t.token != null ? " (계정 전용)" : " (글로벌)"));
+            }
             case "reload" -> {
                 // loadSettings() builds a NEW Miner (the token/model may have
                 // changed), and a fresh Miner starts OFF — so a reload while
@@ -808,25 +904,25 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             }
             case "clear" -> {
                 if (board != null) board.clear();
-                if (village != null) village.clear();
+                for (Town t : towns) { if (t.spectacle != null) t.spectacle.allOff(); t.village.clear(); }
                 if (rig != null) rig.clear();
                 if (questBoard != null) questBoard.clear();
                 if (mineShaft != null) mineShaft.clear();
-                if (spectacle != null) spectacle.allOff();
                 int restored = canvas.size();
                 canvas.restoreAll();
                 board = null;
-                village = null;
+                towns.clear();
+                rawTokens.clear();
                 rig = null;
                 questBoard = null;
                 mineShaft = null;
-                spectacle = null;
                 s.sendMessage("§7블록 " + restored + "개를 원래대로 복구했습니다.");
                 getConfig().set("board", null);
                 getConfig().set("village", null);
+                getConfig().set("villages", null);
                 getConfig().set("rig", null);
                 saveConfig();
-                s.sendMessage("§eboard, village and rig removed §7(mining itself: /lm mine stop)");
+                s.sendMessage("§eboard, 모든 마을, rig 제거됨 §7(채굴 자체: /lm mine stop)");
             }
             default -> s.sendMessage("/lm <board|village|rig|mine|take|submit|wallet|top|jobs|on|off|status|reload|clear>");
         }

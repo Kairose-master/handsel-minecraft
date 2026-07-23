@@ -9,6 +9,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -68,6 +69,42 @@ public final class LedgermindClient {
         return out;
     }
 
+    /** Decoded "Connect a local worker" token — identifies an agent (and its account). */
+    public record Token(String agentId, String secret, String platformUrl) {}
+
+    /** Decode a base64url token {a,s,u}; null if it isn't one. */
+    public static Token decodeToken(String token) {
+        if (token == null || token.isBlank()) return null;
+        try {
+            String json = new String(java.util.Base64.getUrlDecoder().decode(token.trim()),
+                    StandardCharsets.UTF_8);
+            JsonObject cfg = JsonParser.parseString(json).getAsJsonObject();
+            if (!cfg.has("a") || !cfg.has("s")) return null;
+            String url = cfg.has("u") ? cfg.get("u").getAsString() : null;
+            return new Token(cfg.get("a").getAsString(), cfg.get("s").getAsString(), url);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * POST /api/world/my-agents — agents on the SAME ACCOUNT as this token's
+     * agent, so a village can show just one account ("1 village = 1 account").
+     */
+    public List<Agent> fetchMyAgents(Token token) throws Exception {
+        JsonObject body = new JsonObject();
+        body.addProperty("agent_id", token.agentId());
+        HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + "/api/world/my-agents"))
+                .timeout(Duration.ofSeconds(20))
+                .header("Content-Type", "application/json")
+                .header("X-Runtime-Secret", token.secret())
+                .header("User-Agent", "LedgermindViz/0.17.0 (Paper plugin)")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
+        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() / 100 != 2) throw new RuntimeException("HTTP " + res.statusCode());
+        return parseAgents(JsonParser.parseString(res.body()));
+    }
+
     /** GET /api/world/agents?limit=N — the public credit leaderboard (v2 village). */
     public List<Agent> fetchAgents(int limit) throws Exception {
         String url = baseUrl + "/api/world/agents?limit=" + limit;
@@ -78,12 +115,14 @@ public final class LedgermindClient {
                 .GET().build();
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (res.statusCode() / 100 != 2) throw new RuntimeException("HTTP " + res.statusCode());
+        return parseAgents(JsonParser.parseString(res.body()));
+    }
 
-        JsonElement parsed = JsonParser.parseString(res.body());
-        if (!parsed.isJsonObject()) throw new RuntimeException("unexpected response shape");
-        JsonObject root = parsed.getAsJsonObject();
-
+    /** Shared parser for both the global and per-account agent feeds. */
+    private static List<Agent> parseAgents(JsonElement parsed) {
         List<Agent> out = new ArrayList<>();
+        if (!parsed.isJsonObject()) return out;
+        JsonObject root = parsed.getAsJsonObject();
         if (!root.has("agents") || root.get("agents").isJsonNull()) return out;
         for (JsonElement e : root.getAsJsonArray("agents")) {
             if (!e.isJsonObject()) continue;

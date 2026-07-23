@@ -84,6 +84,32 @@ public final class TownBuilder {
                 c.clone().add(4, 1, Z_BACK));
     }
 
+    /** A stone-brick avenue linking two town centres into one city. L-shaped. */
+    public void connectRoad(Location from, Location to) {
+        World w = from.getWorld();
+        if (w == null || to.getWorld() == null || !w.equals(to.getWorld())) return;
+        int y = from.getBlockY() - 1;
+        int x0 = from.getBlockX(), z0 = from.getBlockZ();
+        int x1 = to.getBlockX(), z1 = to.getBlockZ();
+        int sx = Integer.signum(x1 - x0), sz = Integer.signum(z1 - z0);
+        // walk X then Z, laying a 3-wide avenue with the centre in quartz
+        for (int x = x0; x != x1; x += (sx == 0 ? 1 : sx)) {
+            avenueTile(w, x, y, z0);
+            if (sx == 0) break;
+        }
+        for (int z = z0; z != z1 + sz; z += (sz == 0 ? 1 : sz)) {
+            avenueTile(w, x1, y, z);
+            if (sz == 0) break;
+        }
+    }
+
+    private void avenueTile(World w, int x, int y, int z) {
+        for (int d = -1; d <= 1; d++) {
+            canvas.placeForce(at(w, x, y, z + d), d == 0 ? Material.SMOOTH_QUARTZ : Material.STONE_BRICKS);
+            canvas.place(at(w, x, y + 1, z + d), Material.AIR);
+        }
+    }
+
     public void build(Location center) {
         World w = center.getWorld();
         if (w == null) return;
