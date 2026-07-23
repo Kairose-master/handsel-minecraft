@@ -22,7 +22,7 @@ import java.util.Locale;
 public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor, Listener {
 
     private static final List<String> SUBS =
-            List.of("help", "board", "village", "rig", "mine", "take", "answer", "submit",
+            List.of("help", "board", "village", "account", "rig", "mine", "take", "answer", "submit",
                     "duel", "wallet", "top", "jobs", "on", "off", "status", "reload", "clear");
 
     private LedgermindClient client;
@@ -623,7 +623,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
      * spectator-only guest can't take part in the human lane.
      */
     private static final List<String> ADMIN_SUBS =
-            List.of("board", "village", "rig", "mine", "on", "off", "reload", "clear");
+            List.of("board", "village", "account", "rig", "mine", "on", "off", "reload", "clear");
 
     /** The full custom-command reference, filtered by permission. */
     private void sendHelp(CommandSender s) {
@@ -642,7 +642,9 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         s.sendMessage("§8우클릭: §7에이전트 = 프로필 · 게시판 = 일감 · 레버 = 풀가동🎆");
         if (admin) {
             s.sendMessage("§c관리자(OP) 전용");
-            s.sendMessage("§c/lm village §8[이름] [토큰] §7— 마을 세우기 §8(토큰=계정별, 도로 자동연결)");
+            s.sendMessage("§c/lm village §8[이름] §7— 글로벌(전체) 마을 세우기");
+            s.sendMessage("§c/lm account add <이름> <토큰> §7— 계정별 마을 등록 §8(1마을=1계정, 도로연결)");
+            s.sendMessage("§c/lm account list|remove §7— 등록된 계정 마을 목록/제거");
             s.sendMessage("§c/lm board §7— 일감 게시판 설치 · §c/lm rig §7— 채굴 리그 설치");
             s.sendMessage("§c/lm mine §fstart|stop|status §7— 채굴 제어");
             s.sendMessage("§c/lm on|off §7— API 폴링 · §c/lm reload §7— config 다시 읽기");
@@ -684,22 +686,75 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                     s.sendMessage("players only - stand where the plaza should go");
                     return true;
                 }
-                // /lm village [label] [token] — a new town for one account, road-linked.
-                // With no token it mirrors the global leaderboard; with a token it shows
-                // just that account's agents ("1 village = 1 account").
-                String vlabel = a.length > 1 ? a[1] : null;
-                String vtoken = a.length > 2 ? a[2] : (a.length > 1 && a[1].length() > 40 ? a[1] : "");
-                if (vtoken.length() > 40 && vlabel != null && vlabel.equals(vtoken)) vlabel = null; // a lone token
-                Location loc = p.getLocation().clone();
+                // Global village (whole-platform leaderboard). For one account, use /lm account add.
+                String vlabel = a.length > 1 ? a[1] : "글로벌";
                 boolean first = towns.isEmpty();
-                Town town = createTown(vlabel, loc, vtoken);
+                Town town = createTown(vlabel, p.getLocation().clone(), "");
                 saveTowns();
                 startPolling();
-                s.sendMessage("§a'" + town.label + "' 마을을 세웠습니다"
-                        + (town.token != null ? " §7(계정 전용)" : " §7(글로벌)")
+                s.sendMessage("§a'" + town.label + "' 마을을 세웠습니다 §7(글로벌 리더보드)"
                         + (first ? "." : " — 기존 마을과 도로로 연결됨."));
-                if (vtoken != null && vtoken.length() > 40) {
-                    s.sendMessage("§8토큰은 채팅에 남습니다 — 테스트 후 대시보드에서 재발급을 권장합니다.");
+                s.sendMessage("§8특정 계정만 보려면: §7/lm account add <이름> <토큰>");
+            }
+            case "account" -> {
+                String sub = a.length > 1 ? a[1].toLowerCase(Locale.ROOT) : "list";
+                switch (sub) {
+                    case "add" -> {
+                        if (!(s instanceof Player p)) { s.sendMessage("§7서 있는 자리에 마을이 생기니 게임에서 실행하세요."); return true; }
+                        if (a.length < 4) {
+                            s.sendMessage("§7사용법: §f/lm account add <이름> <토큰>");
+                            s.sendMessage("§8토큰 = 대시보드 → 에이전트 → \"Connect a local worker\" 에서 발급");
+                            return true;
+                        }
+                        String acctLabel = a[2];
+                        String token = a[3];
+                        if (LedgermindClient.decodeToken(token) == null) {
+                            s.sendMessage("§c토큰이 올바르지 않습니다. 대시보드에서 다시 복사하세요.");
+                            return true;
+                        }
+                        for (Town t : towns) {
+                            if (acctLabel.equalsIgnoreCase(t.label)) {
+                                s.sendMessage("§c'" + acctLabel + "' 이름의 마을이 이미 있습니다. 다른 이름을 쓰세요.");
+                                return true;
+                            }
+                        }
+                        boolean first = towns.isEmpty();
+                        Town town = createTown(acctLabel, p.getLocation().clone(), token);
+                        saveTowns();
+                        startPolling();
+                        s.sendMessage("§a계정 마을 '" + acctLabel + "' 등록 완료 §7(에이전트 " + town.token.agentId().substring(0, 6) + "… 소속)");
+                        s.sendMessage(first ? "§7이제 이 계정의 에이전트만 이 마을에 나타납니다."
+                                : "§7기존 마을과 도로로 자동 연결됐습니다.");
+                        s.sendMessage("§8⚠ 토큰이 채팅에 남았습니다 — 신경 쓰이면 대시보드에서 재발급하세요.");
+                    }
+                    case "list" -> {
+                        if (towns.isEmpty()) { s.sendMessage("§7등록된 마을이 없습니다. §f/lm village §7또는 §f/lm account add"); return true; }
+                        s.sendMessage("§6등록된 마을/계정 (" + towns.size() + ")");
+                        for (Town t : towns) {
+                            s.sendMessage("§8· §f" + t.label + " §7"
+                                    + (t.token != null ? "계정 " + t.token.agentId().substring(0, 6) + "…" : "글로벌")
+                                    + " §8(" + t.village.size() + " 주민)");
+                        }
+                    }
+                    case "remove" -> {
+                        if (a.length < 3) { s.sendMessage("§7사용법: §f/lm account remove <이름>"); return true; }
+                        Town found = null;
+                        for (Town t : towns) if (a[2].equalsIgnoreCase(t.label)) { found = t; break; }
+                        if (found == null) { s.sendMessage("§c'" + a[2] + "' 마을이 없습니다. §f/lm account list"); return true; }
+                        if (found.spectacle != null) found.spectacle.allOff();
+                        found.village.clear();
+                        towns.remove(found);
+                        rawTokens.remove(found);
+                        lastGoodAgents.remove(found);
+                        saveTowns();
+                        s.sendMessage("§e'" + found.label + "' 마을을 제거했습니다 §7(주민 제거됨; 건물 블록은 /lm clear 로 전체 복구)");
+                    }
+                    default -> {
+                        s.sendMessage("§7/lm account <add|list|remove>");
+                        s.sendMessage("§f/lm account add <이름> <토큰> §7— 계정 마을 등록");
+                        s.sendMessage("§f/lm account list §7— 등록된 마을 목록");
+                        s.sendMessage("§f/lm account remove <이름> §7— 마을 제거");
+                    }
                 }
             }
             case "rig" -> {
@@ -982,12 +1037,26 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
 
     @Override
     public List<String> onTabComplete(CommandSender s, Command c, String label, String[] a) {
-        if (a.length != 1) return List.of();
-        String prefix = a[0].toLowerCase(Locale.ROOT);
         boolean admin = s.hasPermission("ledgermind.admin");
-        return SUBS.stream()
-                .filter(x -> admin || !ADMIN_SUBS.contains(x))
-                .filter(x -> x.startsWith(prefix))
-                .toList();
+        if (a.length == 1) {
+            String prefix = a[0].toLowerCase(Locale.ROOT);
+            return SUBS.stream()
+                    .filter(x -> admin || !ADMIN_SUBS.contains(x))
+                    .filter(x -> x.startsWith(prefix))
+                    .toList();
+        }
+        if (a.length == 2) {
+            String sub = a[0].toLowerCase(Locale.ROOT);
+            String pre = a[1].toLowerCase(Locale.ROOT);
+            if (sub.equals("account") && admin)
+                return List.of("add", "list", "remove").stream().filter(x -> x.startsWith(pre)).toList();
+            if (sub.equals("mine") && admin)
+                return List.of("start", "stop", "status").stream().filter(x -> x.startsWith(pre)).toList();
+        }
+        if (a.length == 3 && a[0].equalsIgnoreCase("account")
+                && a[1].equalsIgnoreCase("remove") && admin) {
+            return towns.stream().map(t -> t.label).filter(java.util.Objects::nonNull).toList();
+        }
+        return List.of();
     }
 }
