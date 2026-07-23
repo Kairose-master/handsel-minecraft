@@ -244,8 +244,16 @@ public final class Miner {
                 .build();
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (res.statusCode() / 100 != 2) {
-            throw new RuntimeException(path + " responded " + res.statusCode() + ": "
-                    + res.body().substring(0, Math.min(160, res.body().length())));
+            // The API returns {"error":"human-readable reason"} on refusals —
+            // surface just that, so a claim rejection reads cleanly in chat.
+            String detail = res.body();
+            try {
+                JsonElement e = JsonParser.parseString(res.body());
+                if (e.isJsonObject() && e.getAsJsonObject().has("error")) {
+                    detail = e.getAsJsonObject().get("error").getAsString();
+                }
+            } catch (RuntimeException ignored) { /* keep raw body */ }
+            throw new RuntimeException(detail.substring(0, Math.min(200, detail.length())));
         }
         JsonElement parsed = JsonParser.parseString(res.body());
         return parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
@@ -312,6 +320,29 @@ public final class Miner {
     /** A task handed out by the platform, before anyone (model or human) works it. */
     public record Task(String id, String prompt) {
         public String firstLine() { return Miner.firstLine(prompt); }
+    }
+
+    /**
+     * Directly claim ONE Open Labor Market job by id — the manual-worker path.
+     * Unlike {@link #claimTask()} (which only drains an already-dispatched
+     * queue), this walks up to the open market and takes a specific job, doing
+     * the on-chain accept server-side. The returned Task is then worked and
+     * submitted through {@link #deliver} exactly like any other.
+     *
+     * @throws Exception with the platform's own refusal message (job taken,
+     *         score too low, capability mismatch, self-deal, …)
+     */
+    public Task claimJob(int jobId) throws Exception {
+        JsonObject body = new JsonObject();
+        body.addProperty("agent_id", agentId);
+        body.addProperty("job_id", jobId);
+        JsonObject res = platformPost("/api/worker/claim", body.toString());
+        if (res == null || !res.has("task_id")) {
+            throw new RuntimeException("claim returned no task");
+        }
+        return new Task(res.get("task_id").getAsString(),
+                res.has("prompt") && !res.get("prompt").isJsonNull()
+                        ? res.get("prompt").getAsString() : "");
     }
 
     // --- the pipeline, exposed piece by piece ------------------------------

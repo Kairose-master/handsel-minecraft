@@ -8,8 +8,11 @@ commands:
   lm:
     description: Ledgermind visualization controls
     usage: "/lm <board|village|rig|mine|take|submit|wallet|top|jobs|on|off|status|reload|clear>"
-    permission: ledgermind.admin
+    permission: ledgermind.use
 permissions:
+  ledgermind.use:
+    description: Look at the live economy and work a job (everyone)
+    default: true
   ledgermind.admin:
-    description: Manage the Ledgermind visualization
+    description: Place the board/village/rig and control mining
     default: op
