@@ -82,6 +82,8 @@ build:
   celebrate: true
   # 마을에 광장·은행 건물·가로등 건축 (/lm clear 시 원상복구)
   town: true
+  # 발전소·비콘·풀가동 레버 등 화려한 연출
+  spectacle: true
 
 # ─── 화면 HUD (항상 표시) ─────────────────────────────────────────────────
 hud:
@@ -97,3 +99,6 @@ duel-seconds: 20
 
 # 마을 주민들이 실제 경제 이벤트에 반응해 걸어다니기 (은행 왕복 등)
 village-life: true
+
+# 풀가동 레버를 눌렀을 때 쇼 지속 시간(초)
+spectacle-seconds: 30

@@ -33,6 +33,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     private final BlockCanvas canvas = new BlockCanvas();
     private QuestBoard questBoard;
     private MineShaft mineShaft;
+    private Spectacle spectacle;
     private final PlayerLane playerLane = new PlayerLane(this);
     private Scoreboard scoreboard;
     private Ticker ticker;
@@ -74,6 +75,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         stopMining();
         if (lifeTask != null) lifeTask.cancel();
         if (tickerTask != null) tickerTask.cancel();
+        if (spectacle != null) spectacle.allOff();
         if (ticker != null) ticker.clear();
         if (scoreboard != null) scoreboard.clear();
         if (board != null) board.clear();
@@ -114,14 +116,22 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         npc.profileLines().forEach(e.getPlayer()::sendMessage);
     }
 
-    /** Right-click the board kiosk → the open-jobs list, same as /lm jobs. */
+    /** Right-click the board kiosk → jobs; the FULL-POWER lever → the show. */
     @EventHandler
     public void onClickBoard(PlayerInteractEvent e) {
-        if (village == null || e.getClickedBlock() == null) return;
-        if (e.getAction() != Action.RIGHT_CLICK_BLOCK) return;
-        if (!village.isBoardKiosk(e.getClickedBlock().getLocation())) return;
-        e.getPlayer().sendMessage("§6📋 §f게시판 — 열린 일감");
-        showJobs(e.getPlayer(), 6);
+        if (e.getClickedBlock() == null || e.getAction() != Action.RIGHT_CLICK_BLOCK) return;
+        Location blk = e.getClickedBlock().getLocation();
+        if (spectacle != null && spectacle.isLever(blk)) {
+            spectacle.fullPower(getConfig().getInt("spectacle-seconds", 30));
+            getServer().broadcast(Component.text(
+                    "⚡ " + e.getPlayer().getName() + " 님이 공장을 §l풀가동§r§a 시켰습니다!",
+                    NamedTextColor.GREEN));
+            return;
+        }
+        if (village != null && village.isBoardKiosk(blk)) {
+            e.getPlayer().sendMessage("§6📋 §f게시판 — 열린 일감");
+            showJobs(e.getPlayer(), 6);
+        }
     }
 
     /** Shared open-jobs readout used by /lm jobs and the board kiosk. */
@@ -152,7 +162,9 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         if (lifeTask != null) lifeTask.cancel();
         if (!getConfig().getBoolean("village-life", true)) return;
         lifeTask = getServer().getScheduler().runTaskTimer(this, () -> {
-            if (village != null) village.tickLife(lifeTick++);
+            int t = lifeTick++;
+            if (village != null) village.tickLife(t);
+            if (spectacle != null) spectacle.tick(t);
         }, 2L, 2L);
     }
 
@@ -253,6 +265,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 if (questBoard != null) questBoard.render(polledJobs, vault);
                 for (Job j : filled) {
                     if (broadcastFills) broadcastFill(j);
+                    if (spectacle != null) spectacle.pulse();
                     if (ticker != null) ticker.push("§a💰 일감 #" + j.id() + " ($" + (long) j.rewardUsd()
                             + ") 완료" + (j.workerName() != null && !j.workerName().isEmpty()
                                 ? " — " + j.workerName() : ""), System.currentTimeMillis());
@@ -459,6 +472,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         if (getConfig().getBoolean("build.towers", true)) village.withTowers(new CreditTower(canvas));
         if (getConfig().getBoolean("build.town", true)) {
             new TownBuilder(canvas).build(vloc);
+            if (getConfig().getBoolean("build.spectacle", true)) spectacle = new Spectacle(this, vloc);
             getLogger().info("town built at " + vloc.getBlockX() + "," + vloc.getBlockY()
                     + "," + vloc.getBlockZ() + " (" + canvas.size() + " blocks)");
         }
@@ -537,7 +551,10 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 if (village != null) village.clear();
                 village = new AgentVillage(this, loc);
                 if (getConfig().getBoolean("build.towers", true)) village.withTowers(new CreditTower(canvas));
-                if (getConfig().getBoolean("build.town", true)) new TownBuilder(canvas).build(loc);
+                if (getConfig().getBoolean("build.town", true)) {
+                    new TownBuilder(canvas).build(loc);
+                    if (getConfig().getBoolean("build.spectacle", true)) spectacle = new Spectacle(this, loc);
+                }
                 saveLocation("village", loc);
                 startPolling();
                 s.sendMessage("§aAgent village anchored here. Up to " + maxAgents
@@ -795,6 +812,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 if (rig != null) rig.clear();
                 if (questBoard != null) questBoard.clear();
                 if (mineShaft != null) mineShaft.clear();
+                if (spectacle != null) spectacle.allOff();
                 int restored = canvas.size();
                 canvas.restoreAll();
                 board = null;
@@ -802,6 +820,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 rig = null;
                 questBoard = null;
                 mineShaft = null;
+                spectacle = null;
                 s.sendMessage("§7블록 " + restored + "개를 원래대로 복구했습니다.");
                 getConfig().set("board", null);
                 getConfig().set("village", null);

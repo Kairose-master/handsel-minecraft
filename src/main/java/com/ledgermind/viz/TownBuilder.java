@@ -49,6 +49,41 @@ public final class TownBuilder {
         return c.clone().add(idx * HOUSE_GAP + 1, 0, HOUSE_Z + 1);
     }
 
+    // --- spectacle feature positions (shared with Spectacle) ----------------
+    // The power plant sits north, behind the bank; its front wall (facing the
+    // plaza) is a marquee of redstone lamps the animator pulses.
+
+    private static final int PLANT_Z = -13;   // front wall of the plant
+    private static final int LAMP_W = 7;      // marquee width (odd)
+    private static final int LAMP_H = 3;
+
+    /** The redstone-lamp marquee grid, row-major (bottom row first). */
+    public static java.util.List<Location> lampGrid(Location c) {
+        java.util.List<Location> out = new java.util.ArrayList<>();
+        for (int y = 0; y < LAMP_H; y++)
+            for (int x = -(LAMP_W / 2); x <= LAMP_W / 2; x++)
+                out.add(c.clone().add(x, 1 + y, PLANT_Z));
+        return out;
+    }
+
+    /** The two chimney tops that puff smoke. */
+    public static java.util.List<Location> chimneys(Location c) {
+        return java.util.List.of(
+                c.clone().add(-3, 6, PLANT_Z - 2),
+                c.clone().add(3, 6, PLANT_Z - 2));
+    }
+
+    /** The FULL-POWER lever block (a lever on a pedestal at the plaza front). */
+    public static Location leverSpot(Location c) { return c.clone().add(0, 1, 1); }
+
+    /** The three beacon blocks (top-3 skyline), left to right. */
+    public static java.util.List<Location> beaconSpots(Location c) {
+        return java.util.List.of(
+                c.clone().add(-4, 1, Z_BACK),
+                c.clone().add(0, 1, Z_BACK),
+                c.clone().add(4, 1, Z_BACK));
+    }
+
     public void build(Location center) {
         World w = center.getWorld();
         if (w == null) return;
@@ -61,6 +96,59 @@ public final class TownBuilder {
         workshop(w, cx, cy, cz);
         boardKiosk(w, cx, cy, cz);
         houses(w, cx, cy, cz);
+        powerPlant(w, cx, cy, cz, center);
+        beacons(w, cx, cy, cz, center);
+        controlPedestal(w, cx, cy, cz, center);
+    }
+
+    /** The factory behind the bank: a lamp-marquee front wall, body, and chimneys. */
+    private void powerPlant(World w, int cx, int cy, int cz, Location c) {
+        int z0 = cz + PLANT_Z - 3, z1 = cz + PLANT_Z;   // body depth
+        int x0 = cx - 4, x1 = cx + 4, y0 = cy, y1 = cy + 4;
+        for (int x = x0; x <= x1; x++) {
+            for (int z = z0; z <= z1; z++) {
+                boolean edge = x == x0 || x == x1 || z == z0 || z == z1;
+                canvas.placeForce(at(w, x, y0 - 1, z), Material.POLISHED_BASALT);
+                if (edge) {
+                    for (int y = y0; y <= y1; y++) canvas.placeForce(at(w, x, y, z), Material.DEEPSLATE_BRICKS);
+                } else {
+                    for (int y = y0; y <= y1; y++) canvas.place(at(w, x, y, z), Material.AIR);
+                }
+                canvas.placeForce(at(w, x, y1 + 1, z), Material.DEEPSLATE_TILES);
+            }
+        }
+        // marquee: redstone lamps set into the front wall (facing the plaza)
+        for (Location lamp : lampGrid(c)) canvas.placeForce(lamp, Material.REDSTONE_LAMP);
+        // chimneys
+        for (Location top : chimneys(c)) {
+            int bx = top.getBlockX(), bz = top.getBlockZ();
+            for (int y = cy; y <= top.getBlockY(); y++) canvas.placeForce(at(w, bx, y, bz), Material.POLISHED_BASALT);
+            canvas.placeForce(at(w, bx, top.getBlockY() + 1, bz), Material.CAMPFIRE); // gentle smoke source
+        }
+    }
+
+    /** Three beacons on iron pyramids — top-3 skyline beams, gold/silver/bronze. */
+    private void beacons(World w, int cx, int cy, int cz, Location c) {
+        Material[] glass = { Material.ORANGE_STAINED_GLASS, Material.WHITE_STAINED_GLASS, Material.BROWN_STAINED_GLASS };
+        java.util.List<Location> spots = beaconSpots(c);
+        for (int i = 0; i < spots.size(); i++) {
+            Location b = spots.get(i);
+            int bx = b.getBlockX(), by = b.getBlockY(), bz = b.getBlockZ();
+            // 3×3 iron base one level below powers the beam
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dz = -1; dz <= 1; dz++)
+                    canvas.placeForce(at(w, bx + dx, by - 1, bz + dz), Material.IRON_BLOCK);
+            canvas.placeForce(at(w, bx, by, bz), Material.BEACON);
+            canvas.placeForce(at(w, bx, by + 1, bz), glass[i]);  // beam colour
+        }
+    }
+
+    /** A pedestal with the FULL-POWER lever at the plaza front. */
+    private void controlPedestal(World w, int cx, int cy, int cz, Location c) {
+        Location lever = leverSpot(c);
+        int lx = lever.getBlockX(), ly = lever.getBlockY(), lz = lever.getBlockZ();
+        canvas.placeForce(at(w, lx, ly - 1, lz), Material.CHISELED_QUARTZ_BLOCK); // pedestal
+        canvas.place(at(w, lx, ly, lz), Material.LEVER);
     }
 
     /** A row of small houses south of the plaza — one per agent to sleep in at night. */
