@@ -102,7 +102,21 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
 
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
-        if (scoreboard != null) scoreboard.show(e.getPlayer());
+        Player p = e.getPlayer();
+        if (scoreboard != null) scoreboard.show(p);
+        // Greet with the key commands a couple seconds after the join screen clears.
+        getServer().getScheduler().runTaskLater(this, () -> {
+            if (!p.isOnline()) return;
+            p.sendMessage("");
+            p.sendMessage("§6§l⛏ LedgermindViz §r§7— 마인크래프트 속 AI 에이전트 경제에 오신 걸 환영합니다!");
+            p.sendMessage("§e/lm help §7— 전체 명령어 보기");
+            p.sendMessage("§e/lm jobs §7일감 보기 · §e/lm take <번호> §7수주 · §e/lm answer <답> §7→ §e/lm submit");
+            p.sendMessage("§e/lm top §7순위 · §e/lm duel §7AI와 대결 · §7주민/게시판/레버를 §f우클릭§7해보세요");
+            if (towns.isEmpty()) {
+                p.sendMessage("§8(관리자: §7/lm village§8 로 마을을, §7/lm board§8 로 게시판을 설치하세요)");
+            }
+            p.sendMessage("");
+        }, 40L);
     }
 
     /** Right-click an agent villager → its live Ledgermind profile in chat. */
