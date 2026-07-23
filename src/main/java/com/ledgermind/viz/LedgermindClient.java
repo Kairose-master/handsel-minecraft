@@ -27,7 +27,15 @@ public final class LedgermindClient {
 
     /** GET /api/tasks?status=Open&limit=N — throws on failure (caller logs). */
     public List<Job> fetchOpenJobs(int limit) throws Exception {
-        String url = baseUrl + "/api/tasks?status=Open&limit=" + limit;
+        return fetchJobs("Open", limit);
+    }
+
+    /**
+     * GET /api/tasks?status=S — jobs across statuses, for the town's live foot
+     * traffic (who's requesting, who's working). Pass "all" for every status.
+     */
+    public List<Job> fetchJobs(String status, int limit) throws Exception {
+        String url = baseUrl + "/api/tasks?status=" + status + "&limit=" + limit;
         HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(20))
                 .header("Accept", "application/json")

@@ -178,11 +178,21 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                     getLogger().warning("agent poll failed: " + e.getMessage());
                 }
             }
+            // All-status jobs drive the town's live foot traffic (who's working / requesting).
+            List<Job> roleJobs = List.of();
+            if (village != null) {
+                try {
+                    roleJobs = client.fetchJobs("all", 20);
+                } catch (Exception e) {
+                    getLogger().warning("role poll failed: " + e.getMessage());
+                }
+            }
             String vault = showVault ? client.fetchVaultLine() : null;
 
             // hop back to the main thread for every world/entity mutation
             final List<Job> polledJobs = jobs;
             final List<Agent> polledAgents = agents;
+            final List<Job> polledRoleJobs = roleJobs;
             getServer().getScheduler().runTask(this, () -> {
                 // Feed the always-on HUD first (works with no board/village placed).
                 if (!polledAgents.isEmpty()) lastAgents = polledAgents;
@@ -191,6 +201,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 refreshHud();
 
                 if (village != null && !polledAgents.isEmpty()) village.render(polledAgents, vault);
+                if (village != null && !polledRoleJobs.isEmpty()) village.assignRoles(polledRoleJobs);
                 if (board == null) return;
                 List<Job> filled = board.render(polledJobs, vault);
                 if (questBoard != null) questBoard.render(polledJobs, vault);

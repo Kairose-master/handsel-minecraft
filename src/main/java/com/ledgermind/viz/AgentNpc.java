@@ -19,8 +19,8 @@ public final class AgentNpc {
     private static final double ARRIVE = 0.5;     // "close enough" to the goal
     private static final int CELEBRATE_TICKS = 40;
 
-    /** What the villager is doing right now. */
-    private enum Phase { IDLE, TO_BANK, CELEBRATE, TO_HOME, WANDER }
+    /** Payday interrupt state — a score rise sends the NPC to the bank to celebrate. */
+    private enum Pay { NONE, TO_BANK, CELEBRATE }
 
     private final Villager villager;
     private final TextDisplay label;
@@ -29,10 +29,12 @@ public final class AgentNpc {
     private int deltaTtl;
 
     private Location home;
-    private Location goal;
-    private Phase phase = Phase.IDLE;
+    /** Where this agent's real job status says it should be (workshop/board), or null. */
+    private Location station;
+    private Pay pay = Pay.NONE;
     private int celebrateTtl;
     private int wanderCooldown;
+    private Location wanderGoal;
 
     public AgentNpc(Location loc, Agent a, int rank) {
         var world = loc.getWorld();
@@ -62,7 +64,19 @@ public final class AgentNpc {
      */
     public void setHome(Location loc) {
         this.home = loc.clone();
-        if (phase == Phase.IDLE) place(loc);
+        // Snap only if it's just standing at home with nothing else going on.
+        if (pay == Pay.NONE && station == null && villager.getLocation().distanceSquared(loc) > 64) {
+            place(loc);
+        }
+    }
+
+    /**
+     * Where this agent's real Ledgermind status wants it — the workshop while it
+     * works a job, the board while it has an open bounty out, or null to send it
+     * back home. Drives the town's live foot traffic.
+     */
+    public void setStation(Location loc) {
+        this.station = loc == null ? null : loc.clone();
     }
 
     public void update(Agent a, int rank) {
@@ -75,7 +89,7 @@ public final class AgentNpc {
             shownDelta = delta;
             deltaTtl = DELTA_POLLS;
             // Score rose = it just got paid → parade to the bank and celebrate.
-            phase = Phase.TO_BANK;
+            pay = Pay.TO_BANK;
         } else if (delta < -0.5) {
             shownDelta = delta;
             deltaTtl = DELTA_POLLS;
@@ -92,40 +106,57 @@ public final class AgentNpc {
      * and otherwise stroll gently around the home spot so the plaza looks alive.
      */
     public void tickLife(Location bank, int tickSeed) {
-        switch (phase) {
-            case TO_BANK -> {
-                if (bank != null) goal = groundGoal(bank);
-                if (stepToward(goal)) {
-                    phase = Phase.CELEBRATE;
-                    celebrateTtl = CELEBRATE_TICKS;
-                    var w = villager.getWorld();
-                    if (w != null) {
-                        Location at = villager.getLocation().add(0, 1.0, 0);
-                        w.spawnParticle(Particle.HAPPY_VILLAGER, at, 20, .4, .5, .4, 0);
-                        w.playSound(at, Sound.ENTITY_VILLAGER_CELEBRATE, 0.8f, 1.2f);
-                    }
+        // Payday interrupt takes priority over everything.
+        if (pay == Pay.TO_BANK) {
+            if (stepToward(bank == null ? null : groundGoal(bank))) {
+                pay = Pay.CELEBRATE;
+                celebrateTtl = CELEBRATE_TICKS;
+                var w = villager.getWorld();
+                if (w != null) {
+                    Location at = villager.getLocation().add(0, 1.0, 0);
+                    w.spawnParticle(Particle.HAPPY_VILLAGER, at, 20, .4, .5, .4, 0);
+                    w.playSound(at, Sound.ENTITY_VILLAGER_CELEBRATE, 0.8f, 1.2f);
                 }
             }
-            case CELEBRATE -> {
-                if (--celebrateTtl <= 0) { phase = Phase.TO_HOME; goal = home; }
-            }
-            case TO_HOME -> {
-                if (stepToward(home)) phase = Phase.IDLE;
-            }
-            case WANDER -> {
-                if (stepToward(goal)) phase = Phase.IDLE;
-            }
-            case IDLE -> {
-                // Occasionally stroll to a nearby spot so nobody stands frozen.
-                if (--wanderCooldown <= 0) {
-                    wanderCooldown = 60 + (tickSeed % 80);        // ~3-7s between strolls
-                    double dx = ((tickSeed % 5) - 2) * 0.7;
-                    double dz = (((tickSeed / 5) % 5) - 2) * 0.7;
-                    goal = home.clone().add(dx, 0, dz);
-                    phase = Phase.WANDER;
-                }
-            }
+            return;
         }
+        if (pay == Pay.CELEBRATE) {
+            if (--celebrateTtl <= 0) pay = Pay.NONE;
+            return;
+        }
+
+        // Otherwise head to where our real job status says we belong.
+        Location target = station != null ? station : home;
+        if (!arrived(target)) {
+            stepToward(target);
+            wanderGoal = null;
+            return;
+        }
+        // Standing at our post: a working agent flicks the occasional spark;
+        // an idle one strolls a little so nobody's a statue.
+        if (station != null) {
+            if ((tickSeed & 15) == 0) {
+                var w = villager.getWorld();
+                if (w != null) w.spawnParticle(Particle.ENCHANT,
+                        villager.getLocation().add(0, 1.4, 0), 3, .2, .3, .2, .3);
+            }
+            return;
+        }
+        if (wanderGoal != null) {
+            if (stepToward(wanderGoal)) wanderGoal = null;
+        } else if (--wanderCooldown <= 0) {
+            wanderCooldown = 60 + (tickSeed % 80);           // ~3-7s between strolls
+            double dx = ((tickSeed % 5) - 2) * 0.7;
+            double dz = (((tickSeed / 5) % 5) - 2) * 0.7;
+            wanderGoal = home.clone().add(dx, 0, dz);
+        }
+    }
+
+    private boolean arrived(Location target) {
+        if (target == null) return true;
+        Location cur = villager.getLocation();
+        double dx = target.getX() - cur.getX(), dz = target.getZ() - cur.getZ();
+        return dx * dx + dz * dz < ARRIVE * ARRIVE;
     }
 
     /** Step toward a target; returns true on arrival. Faces the direction of travel. */

@@ -79,6 +79,31 @@ public final class AgentVillage {
         });
     }
 
+    /**
+     * Route NPCs by their REAL Ledgermind status, turning the town into a live
+     * diorama of the marketplace: the requester of an open bounty stands at the
+     * board kiosk (they've put work out and are waiting), the worker on an
+     * in-progress job stands at the workshop, and everyone else drifts home.
+     * Paydays (score rises) still interrupt with a walk to the bank.
+     */
+    public void assignRoles(List<Job> jobs) {
+        java.util.Map<String, Location> stationByName = new java.util.HashMap<>();
+        Location workshop = TownBuilder.workshopSpot(center);
+        Location board = TownBuilder.boardSpot(center);
+        for (Job j : jobs) {
+            String status = j.status() == null ? "" : j.status();
+            if (!j.workerName().isBlank()
+                    && (status.equalsIgnoreCase("Accepted") || status.equalsIgnoreCase("Submitted"))) {
+                stationByName.put(j.workerName(), workshop);       // actively working
+            } else if (!j.requesterName().isBlank() && status.equalsIgnoreCase("Open")) {
+                stationByName.putIfAbsent(j.requesterName(), board); // waiting for a worker
+            }
+        }
+        for (Map.Entry<String, AgentNpc> e : npcs.entrySet()) {
+            e.getValue().setStation(stationByName.get(e.getKey())); // null → head home
+        }
+    }
+
     /** Drive the living village — one movement step for every NPC. Called on a fast timer. */
     public void tickLife(int tick) {
         if (npcs.isEmpty()) return;
