@@ -89,3 +89,6 @@ hud:
   ticker: true
   # 티커가 몇 초마다 다음 헤드라인으로 넘어갈지
   ticker-seconds: 3
+
+# 인간 vs AI 대결 (/lm duel) — 한 라운드 제한시간(초)
+duel-seconds: 20

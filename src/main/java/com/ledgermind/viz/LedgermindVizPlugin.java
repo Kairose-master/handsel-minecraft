@@ -20,7 +20,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
 
     private static final List<String> SUBS =
             List.of("board", "village", "rig", "mine", "take", "answer", "submit",
-                    "wallet", "top", "jobs", "on", "off", "status", "reload", "clear");
+                    "duel", "wallet", "top", "jobs", "on", "off", "status", "reload", "clear");
 
     private LedgermindClient client;
     private JobBoard board;
@@ -33,6 +33,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     private final PlayerLane playerLane = new PlayerLane(this);
     private Scoreboard scoreboard;
     private Ticker ticker;
+    private DuelGame duel;
     private BukkitTask poller;
     private BukkitTask minerTask;
     private BukkitTask tickerTask;
@@ -88,6 +89,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             tickerTask = getServer().getScheduler().runTaskTimer(this,
                     () -> ticker.tick(System.currentTimeMillis()), every, every);
         }
+        duel = new DuelGame(this, getConfig().getInt("duel-seconds", 20));
     }
 
     @EventHandler
@@ -617,6 +619,30 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                         announceResult(r, "§7(by " + p.getName() + ")");
                     });
                 });
+            }
+            case "duel" -> {
+                if (!(s instanceof Player p)) { s.sendMessage("players only"); return true; }
+                if (duel == null) { s.sendMessage("§7대결 기능이 꺼져 있습니다."); return true; }
+                if (a.length > 1 && a[1].equalsIgnoreCase("stats")) {
+                    s.sendMessage("§6⚔ 인간 vs AI 전적 — §f" + duel.statsLine());
+                    return true;
+                }
+                if (duel.active()) {
+                    // A second arg during a live round is an answer; bare /lm duel just informs.
+                    if (a.length > 1) {
+                        duel.submit(p, String.join(" ", java.util.Arrays.copyOfRange(a, 1, a.length)));
+                    } else {
+                        s.sendMessage("§7대결 진행 중 — 답: §f/lm duel <답>");
+                    }
+                    return true;
+                }
+                if (a.length > 1) { // answering when nothing's running
+                    s.sendMessage("§7지금 진행 중인 대결이 없습니다. §f/lm duel §7로 시작하세요.");
+                    return true;
+                }
+                if (!duel.start(lastAgents, miner)) {
+                    s.sendMessage("§7아직 대결을 시작할 데이터가 부족합니다 (에이전트 정보 로딩 중).");
+                }
             }
             case "wallet" -> {
                 if (miner == null) {
