@@ -2,17 +2,28 @@ package com.ledgermind.viz;
 
 import org.bukkit.Color;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.entity.Villager;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.Locale;
 
 /** One villager + its floating credit hologram, that walks the village alive. MAIN THREAD ONLY. */
 public final class AgentNpc {
+    /** Marks a villager as one of ours, so a restart can sweep away strays before respawning. */
+    public static final NamespacedKey TAG = new NamespacedKey("ledgermindviz", "npc");
+
+    /** True if the entity is a leftover viz NPC (used to clean up after a crash). */
+    public static boolean isOurs(Entity e) {
+        return e != null && e.getPersistentDataContainer().has(TAG, PersistentDataType.BYTE);
+    }
+
     /** How many polls the "▲ +12" score-change badge stays visible. */
     private static final int DELTA_POLLS = 4;
     private static final double STEP = 0.16;      // blocks per movement tick
@@ -51,9 +62,10 @@ public final class AgentNpc {
         villager.setAI(false);
         villager.setInvulnerable(true);
         villager.setSilent(true);
-        villager.setPersistent(false);
+        villager.setPersistent(true);     // never despawn — a viz NPC must stay put
         villager.setGravity(false);       // we drive movement ourselves, no falling
         villager.setProfession(Villager.Profession.NITWIT); // neutral look
+        villager.getPersistentDataContainer().set(TAG, PersistentDataType.BYTE, (byte) 1);
         label = world.spawn(loc.clone().add(0, 2.2, 0), TextDisplay.class, td -> {
             td.setBillboard(Display.Billboard.CENTER);
             td.setSeeThrough(true);
