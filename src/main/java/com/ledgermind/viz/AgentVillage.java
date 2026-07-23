@@ -63,7 +63,7 @@ public final class AgentVillage {
             if (npc == null || npc.isDead()) {
                 npcs.put(a.name(), new AgentNpc(loc, a, i));
             } else {
-                npc.moveTo(loc);
+                npc.setHome(loc);   // don't yank a walking NPC; it heads back when idle
                 npc.update(a, i);
             }
             if (towers != null) towers.update(loc, a);
@@ -77,6 +77,17 @@ public final class AgentVillage {
             }
             return false;
         });
+    }
+
+    /** Drive the living village — one movement step for every NPC. Called on a fast timer. */
+    public void tickLife(int tick) {
+        if (npcs.isEmpty()) return;
+        Location bank = center.clone(); // the 🏦 sign sits above the plaza centre
+        int seed = tick;
+        for (AgentNpc npc : npcs.values()) {
+            if (!npc.isDead()) npc.tickLife(bank, seed);
+            seed += 37; // decorrelate each NPC's idle wander
+        }
     }
 
     /** The §15 "BANK" marker at the head of the plaza, carrying the vault gauge. */

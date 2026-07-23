@@ -92,3 +92,6 @@ hud:
 
 # 인간 vs AI 대결 (/lm duel) — 한 라운드 제한시간(초)
 duel-seconds: 20
+
+# 마을 주민들이 실제 경제 이벤트에 반응해 걸어다니기 (은행 왕복 등)
+village-life: true

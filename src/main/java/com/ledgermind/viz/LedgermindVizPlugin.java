@@ -37,6 +37,8 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     private BukkitTask poller;
     private BukkitTask minerTask;
     private BukkitTask tickerTask;
+    private BukkitTask lifeTask;
+    private int lifeTick;
     private volatile List<Agent> lastAgents = List.of();
     private volatile int lastOpenJobs;
     private volatile String lastVaultLine;
@@ -57,6 +59,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         setupHud();
         getServer().getPluginManager().registerEvents(this, this);
         startPolling();
+        startLife();
         if (miner != null && getConfig().getBoolean("mining.autostart", false)) startMining();
         getLogger().info("LedgermindViz enabled - polling " + client.baseUrl()
                 + " every " + pollSeconds + "s");
@@ -66,6 +69,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     public void onDisable() {
         stopPolling();
         stopMining();
+        if (lifeTask != null) lifeTask.cancel();
         if (tickerTask != null) tickerTask.cancel();
         if (ticker != null) ticker.clear();
         if (scoreboard != null) scoreboard.clear();
@@ -95,6 +99,15 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
         if (scoreboard != null) scoreboard.show(e.getPlayer());
+    }
+
+    /** The living-village mover: every 2 ticks, walk each NPC one step. */
+    private void startLife() {
+        if (lifeTask != null) lifeTask.cancel();
+        if (!getConfig().getBoolean("village-life", true)) return;
+        lifeTask = getServer().getScheduler().runTaskTimer(this, () -> {
+            if (village != null) village.tickLife(lifeTick++);
+        }, 2L, 2L);
     }
 
     /** Re-render the HUD from the latest poll (main thread). */
