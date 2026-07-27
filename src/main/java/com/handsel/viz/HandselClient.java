@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -15,12 +15,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** All HTTP is keyless GETs to the public API. Safe to call off the main thread. */
-public final class LedgermindClient {
+public final class HandselClient {
     private final String baseUrl;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10)).build();
 
-    public LedgermindClient(String baseUrl) {
+    public HandselClient(String baseUrl) {
         this.baseUrl = baseUrl.replaceAll("/+$", "");
     }
 
@@ -40,17 +40,28 @@ public final class LedgermindClient {
         HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(20))
                 .header("Accept", "application/json")
-                .header("User-Agent", "LedgermindViz/0.1.0 (Paper plugin)")
+                .header("User-Agent", "HandselViz/0.1.0 (Paper plugin)")
                 .GET().build();
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (res.statusCode() / 100 != 2) throw new RuntimeException("HTTP " + res.statusCode());
+        return parseJobs(JsonParser.parseString(res.body()));
+    }
 
-        JsonElement parsed = JsonParser.parseString(res.body());
-        if (!parsed.isJsonObject()) throw new RuntimeException("unexpected response shape");
-        JsonObject root = parsed.getAsJsonObject();
-
+    /**
+     * The task feed, turned into records.
+     *
+     * Separate from the fetch so it can be tested without a server. That is not
+     * a testing convenience — this parser is the plugin's entire contract with
+     * an API it does not control, and every field here is optional on the wire
+     * (see {@link Job}: requesterName and workerName are absent on deployments
+     * that predate them). A parser that throws on a missing field takes the
+     * whole board down; one that quietly yields empty strings does not.
+     */
+    static List<Job> parseJobs(JsonElement parsed) {
         List<Job> out = new ArrayList<>();
-        if (!root.has("tasks") || root.get("tasks").isJsonNull()) return out;
+        if (parsed == null || !parsed.isJsonObject()) return out;
+        JsonObject root = parsed.getAsJsonObject();
+        if (!root.has("tasks") || !root.get("tasks").isJsonArray()) return out;
         JsonArray tasks = root.getAsJsonArray("tasks");
         for (JsonElement e : tasks) {
             if (!e.isJsonObject()) continue;
@@ -98,7 +109,7 @@ public final class LedgermindClient {
                 .timeout(Duration.ofSeconds(20))
                 .header("Content-Type", "application/json")
                 .header("X-Runtime-Secret", token.secret())
-                .header("User-Agent", "LedgermindViz/0.17.0 (Paper plugin)")
+                .header("User-Agent", "HandselViz/0.17.0 (Paper plugin)")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (res.statusCode() / 100 != 2) throw new RuntimeException("HTTP " + res.statusCode());
@@ -111,15 +122,16 @@ public final class LedgermindClient {
         HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(20))
                 .header("Accept", "application/json")
-                .header("User-Agent", "LedgermindViz/0.2.0 (Paper plugin)")
+                .header("User-Agent", "HandselViz/0.2.0 (Paper plugin)")
                 .GET().build();
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (res.statusCode() / 100 != 2) throw new RuntimeException("HTTP " + res.statusCode());
         return parseAgents(JsonParser.parseString(res.body()));
     }
 
-    /** Shared parser for both the global and per-account agent feeds. */
-    private static List<Agent> parseAgents(JsonElement parsed) {
+    /** Shared parser for both the global and per-account agent feeds.
+     *  Package-private for the same reason as {@link #parseJobs}. */
+    static List<Agent> parseAgents(JsonElement parsed) {
         List<Agent> out = new ArrayList<>();
         if (!parsed.isJsonObject()) return out;
         JsonObject root = parsed.getAsJsonObject();
@@ -143,7 +155,7 @@ public final class LedgermindClient {
             HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + "/api/vault/onchain"))
                     .timeout(Duration.ofSeconds(15))
                     .header("Accept", "application/json")
-                    .header("User-Agent", "LedgermindViz/0.1.0 (Paper plugin)")
+                    .header("User-Agent", "HandselViz/0.1.0 (Paper plugin)")
                     .GET().build();
             HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() / 100 != 2) return null;

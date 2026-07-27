@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 /**
  * One bounty from GET /api/tasks.

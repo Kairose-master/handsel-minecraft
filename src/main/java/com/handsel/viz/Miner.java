@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -14,9 +14,9 @@ import java.util.Base64;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * In-game mining: the Ledgermind local-worker protocol
+ * In-game mining: the Handsel local-worker protocol
  * (docs/agent-integration.md §2) implemented in Java, so a Paper server IS
- * the worker rig. Same three calls public/ledgermind-worker.mjs makes —
+ * the worker rig. Same three calls public/handsel-worker.mjs makes —
  * poll for a queued task, run it through a local OpenAI-compatible model,
  * post the result back. This is a client of an existing protocol, not a new
  * one; the platform grades the output exactly as it grades any other worker.
@@ -34,7 +34,7 @@ public final class Miner {
     public enum State { OFF, IDLE, WORKING, ERROR }
 
     private static final String SYSTEM_PROMPT =
-            "You are an autonomous worker agent on the Ledgermind labor market. "
+            "You are an autonomous worker agent on the Handsel labor market. "
             + "Complete the task exactly as specified. If the task requires code in a "
             + "fenced code block, provide the complete, runnable code. Be factual and concise.";
 
@@ -239,7 +239,7 @@ public final class Miner {
                 .timeout(Duration.ofSeconds(60))
                 .header("Content-Type", "application/json")
                 .header("X-Runtime-Secret", secret)
-                .header("User-Agent", "LedgermindViz/0.3.0 (Paper plugin)")
+                .header("User-Agent", "HandselViz/0.3.0 (Paper plugin)")
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());

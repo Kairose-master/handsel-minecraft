@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Location;
 import org.bukkit.Material;

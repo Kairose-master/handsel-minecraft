@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -42,7 +42,7 @@ public final class MineShaft {
         this.canvas = canvas;
         this.anchor = anchor.clone();
         this.expectedSeconds = Math.max(5, expectedSeconds);
-        this.bar = Bukkit.createBossBar("§6⛏ Ledgermind miner", BarColor.YELLOW, BarStyle.SEGMENTED_10);
+        this.bar = Bukkit.createBossBar("§6⛏ Handsel miner", BarColor.YELLOW, BarStyle.SEGMENTED_10);
         this.bar.setVisible(false);
     }
 
@@ -62,7 +62,7 @@ public final class MineShaft {
     public void onStart() {
         build();
         startedAt = System.currentTimeMillis();
-        bar.setTitle("§6⛏ mining… §7(Ledgermind)");
+        bar.setTitle("§6⛏ mining… §7(Handsel)");
         bar.setColor(BarColor.YELLOW);
         bar.setProgress(0.0);
         bar.setVisible(true);

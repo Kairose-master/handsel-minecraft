@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 /**
  * One agent from GET /api/world/agents.

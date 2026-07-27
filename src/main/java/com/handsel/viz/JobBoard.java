@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -56,7 +56,7 @@ public final class JobBoard {
 
         if (header == null || header.isDead()) {
             header = spawn(anchor.clone().add(0, 0.4, 0),
-                    AMB + "⛏ " + W + "LEDGERMIND — " + GRY + "live jobs (testnet)");
+                    AMB + "⛏ " + W + "HANDSEL — " + GRY + "live jobs (testnet)");
         }
 
         Map<String, Job> now = new LinkedHashMap<>();

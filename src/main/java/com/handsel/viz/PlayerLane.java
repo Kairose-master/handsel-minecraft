@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * The human lane — a player is a real manual worker on the Ledgermind labor
+ * The human lane — a player is a real manual worker on the Handsel labor
  * market, not a stand-in for an AI. Two ways in, both ending in the SAME
  * submission through {@code /api/runtime/callback} that grades every worker:
  *
@@ -151,7 +151,7 @@ public final class PlayerLane {
         ItemStack book = new ItemStack(Material.WRITTEN_BOOK);
         BookMeta meta = (BookMeta) book.getItemMeta();
         meta.setTitle("Job " + shortId(task.id()));
-        meta.setAuthor("Ledgermind");
+        meta.setAuthor("Handsel");
 
         List<String> pages = new ArrayList<>();
         pages.add("§0§l일감\n\n§0" + wrap(task.prompt(), 220)

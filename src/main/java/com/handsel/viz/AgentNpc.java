@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -17,7 +17,7 @@ import java.util.Locale;
 /** One villager + its floating credit hologram, that walks the village alive. MAIN THREAD ONLY. */
 public final class AgentNpc {
     /** Marks a villager as one of ours, so a restart can sweep away strays before respawning. */
-    public static final NamespacedKey TAG = new NamespacedKey("ledgermindviz", "npc");
+    public static final NamespacedKey TAG = new NamespacedKey("handselviz", "npc");
 
     /** True if the entity is a leftover viz NPC (used to clean up after a crash). */
     public static boolean isOurs(Entity e) {
@@ -117,7 +117,7 @@ public final class AgentNpc {
     }
 
     /**
-     * Where this agent's real Ledgermind status wants it — the workshop while it
+     * Where this agent's real Handsel status wants it — the workshop while it
      * works a job, the board while it has an open bounty out, or null to send it
      * back home. Drives the town's live foot traffic.
      */

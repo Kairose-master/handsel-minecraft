@@ -1,6 +1,39 @@
-# LedgermindViz — 마인크래프트 안의 살아있는 AI 에이전트 일자리 보드
+# handsel-minecraft — HandselViz
 
-Ledgermind(AI 에이전트 신용/노동 시장)의 **실제 공개 API**를 폴링해서, 열려 있는
+A Paper 1.21 plugin that renders a live AI-agent labour market inside
+Minecraft: open bounties as holograms on a board, agents as villagers whose
+credit score is the height of the tower behind them, and a mining rig the
+server can actually work jobs with.
+
+It polls the **real public API** of [Handsel](https://github.com/Kairose-master/handsel).
+Read-only, no key, no server-side changes. Testnet — no real money moves.
+
+Java 21 · Paper 1.21 · no external runtime dependencies (JDK `HttpClient`,
+and the Gson that Paper already bundles).
+
+```bash
+mvn -B verify        # compile + test — the same command CI runs
+```
+
+---
+
+## This repository is worked by paid agents
+
+Every change here arrives as a pull request from a worker that was escrowed
+before it started and graded before it was paid. **Nothing is pushed to `main`
+directly, including by the owner** — see [CONTRIBUTING.md](CONTRIBUTING.md) for
+why that rule exists and how to get a change merged.
+
+If you want to earn one of these bounties, look for issues labelled
+`bounty:$N`.
+
+---
+
+## 사용 설명서 (Korean)
+
+### HandselViz — 마인크래프트 안의 살아있는 AI 에이전트 일자리 보드
+
+Handsel(AI 에이전트 신용/노동 시장)의 **실제 공개 API**를 폴링해서, 열려 있는
 바운티(job)를 마인크래프트 월드 안에 홀로그램으로 띄우는 Paper 플러그인입니다.
 새 job이 뜨면 파란 반짝임 + "핑" 소리, job이 Open 피드에서 사라지면(=수주/지급 완료)
 초록 파티클 + "차칭" 소리 + 전체 채팅 브로드캐스트가 발생합니다.
@@ -13,7 +46,7 @@ Ledgermind(AI 에이전트 신용/노동 시장)의 **실제 공개 API**를 폴
 
 ```bash
 mvn -B -DskipTests package
-# → target/LedgermindViz-0.5.1.jar
+# → target/HandselViz-0.5.1.jar
 ```
 
 ## 설치 (서버 연동)
@@ -22,10 +55,10 @@ mvn -B -DskipTests package
    - https://papermc.io/downloads/paper 에서 `paper-1.21.1-<build>.jar` 다운로드
    - `java -jar paper-1.21.1-xxx.jar --nogui` 로 1회 실행 → `eula.txt`가 생기면
      `eula=true`로 수정 후 다시 실행
-2. `target/LedgermindViz-0.5.1.jar` 를 서버의 **`plugins/`** 폴더에 복사
+2. `target/HandselViz-0.5.1.jar` 를 서버의 **`plugins/`** 폴더에 복사
 3. 서버 재시작 (또는 `/reload confirm` — 재시작 권장)
 4. 콘솔에 다음이 뜨면 성공:
-   `LedgermindViz enabled - polling https://ai-agent-credit-dashboard.vercel.app every 15s`
+   `HandselViz enabled - polling https://ai-agent-credit-dashboard.vercel.app every 15s`
 
 > 서버 머신도 Java 21 이상이어야 합니다 (`java -version`).
 
@@ -49,7 +82,7 @@ mvn -B -DskipTests package
 `/lm board` 후 최대 15초 안에 실제 열린 job들이 이런 형태로 나타납니다:
 
 ```
-⛏ LEDGERMIND — live jobs (testnet)
+⛏ HANDSEL — live jobs (testnet)
 #148  $6  next_run(expr, after) computing next matchin…
 MiniVault  $3000  ·  HF 2.25
 ```
@@ -58,7 +91,7 @@ MiniVault  $3000  ·  HF 2.25
 - job이 하나도 없으면 가짜 숫자 대신 `no open jobs right now` 표시
 - 홀로그램은 `persistent=false` — 서버 껐다 켜도 유령 엔티티가 남지 않고 플러그인이 다시 그립니다
 
-### 설정 (`plugins/LedgermindViz/config.yml`)
+### 설정 (`plugins/HandselViz/config.yml`)
 
 ```yaml
 base-url: "https://ai-agent-credit-dashboard.vercel.app"
@@ -75,7 +108,7 @@ broadcast-fills: true # job이 채워지면 전체 채팅 알림
 2. 대시보드(https://ai-agent-credit-dashboard.vercel.app)에서 job을 새로 posting
    → 다음 폴링에 파란 반짝임과 함께 새 줄 추가
 3. 그 job을 수주(Accept)시키면 → Open 피드에서 빠지며 초록 파티클 + 차칭 +
-   `⚙ Ledgermind: job #148 ($6) was just filled - …` 브로드캐스트
+   `⚙ Handsel: job #148 ($6) was just filled - …` 브로드캐스트
 
 ## 동작 방식 / 설계 노트
 
@@ -111,9 +144,9 @@ job이 채워지면 금 조각이 포물선을 그리며 날아가는 **결제 �
 
 ## 게임 안에서 채굴하기 (`/lm mine`)
 
-서버 자체가 Ledgermind의 **로컬 워커**가 됩니다. `docs/agent-integration.md` §2의
+서버 자체가 Handsel의 **로컬 워커**가 됩니다. `docs/agent-integration.md` §2의
 프로토콜(HTTP 3개)을 그대로 구현했습니다 — `/api/worker/poll`로 대기 중인 작업을
-받고, 로컬 모델로 수행하고, `/api/runtime/callback`으로 제출. `public/ledgermind-worker.mjs`가
+받고, 로컬 모델로 수행하고, `/api/runtime/callback`으로 제출. `public/handsel-worker.mjs`가
 하는 일과 동일하며, 플랫폼은 다른 워커와 똑같이 채점합니다.
 
 ### 준비 (에이전트가 아직 없다면)
@@ -218,7 +251,7 @@ mining:
 > 큐에서 왔고 콜백에 그 시크릿으로 서명하기 때문입니다. 플레이어는 로컬 모델과 같은
 > 자격으로 그 에이전트를 대신해 일하는 것이고, 채팅 알림도 그렇게 표시합니다.
 
-## 게임 안에서 Ledgermind 둘러보기
+## 게임 안에서 Handsel 둘러보기
 
 | 명령어 | 하는 일 |
 | --- | --- |

@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -12,7 +12,7 @@ import java.util.Locale;
 
 /**
  * "Human vs AI" duel — a quick round where a player and the local model race
- * to answer a factual question about the live Ledgermind economy.
+ * to answer a factual question about the live Handsel economy.
  *
  * <p>The twist that makes it on-theme: the question is answerable from what a
  * human can SEE (the sidebar scoreboard shows the live ranking), while the AI
@@ -95,7 +95,7 @@ public final class DuelGame {
                 String a;
                 try {
                     a = miner.runModel("You are competing in a quick trivia game about an AI-agent "
-                            + "marketplace called Ledgermind. Answer in a few words only, no explanation.\n\n"
+                            + "marketplace called Handsel. Answer in a few words only, no explanation.\n\n"
                             + "Question: " + question);
                 } catch (Exception e) {
                     a = "";

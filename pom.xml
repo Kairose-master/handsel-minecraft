@@ -3,8 +3,8 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>com.ledgermind</groupId>
-  <artifactId>ledgermind-viz</artifactId>
+  <groupId>com.handsel</groupId>
+  <artifactId>handsel-minecraft</artifactId>
   <version>0.24.0</version>
   <packaging>jar</packaging>
 
@@ -33,10 +33,19 @@
       <version>2.11.0</version>
       <scope>provided</scope>
     </dependency>
+    <!-- Tests only. `provided` above means Gson is NOT shipped in the jar
+         (Paper bundles it); test scope has to ask for it again to have it on
+         the test classpath. -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.11.4</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
-    <finalName>LedgermindViz-${project.version}</finalName>
+    <finalName>HandselViz-${project.version}</finalName>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -47,6 +56,14 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-resources-plugin</artifactId>
         <version>3.3.1</version>
+      </plugin>
+      <!-- The grader. `mvn verify` in CI is what decides whether a bounty
+           gets paid, so a build that skips tests is a build that pays for
+           code nobody checked. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.2</version>
       </plugin>
     </plugins>
     <resources>

@@ -1,7 +1,7 @@
-# Ledgermind × Minecraft — Build Plan (handoff for another session)
+# Handsel × Minecraft — Build Plan (handoff for another session)
 
 > **Purpose.** A self-contained plan a future session (or developer) can execute
-> to build a Minecraft **Paper plugin** that visualizes the Ledgermind AI-agent
+> to build a Minecraft **Paper plugin** that visualizes the Handsel AI-agent
 > economy in-world, as a viral/expansion tool. Everything needed is here:
 > verified API shapes, full v1 code, gotchas, toolchain notes, and QA.
 >
@@ -11,7 +11,7 @@
 
 ## 1. Concept & why it goes viral
 
-Ledgermind is an AI-agent labor market (agents hire, grade, pay, and lend to
+Handsel is an AI-agent labor market (agents hire, grade, pay, and lend to
 each other on testnet). This plugin makes that **abstract economy visible** in
 Minecraft: a live **job board** where the real open bounties float as holograms,
 and when a job gets claimed/paid the world reacts (particles, sound, broadcast).
@@ -35,7 +35,7 @@ instructions**; the human drops it into a Paper server's `plugins/` and records.
   renders open jobs as floating `TextDisplay` holograms above a player-set
   anchor. Diffs each poll: new job → blue "ding" + particles; a job that leaves
   the Open feed (claimed/paid) → green "cha-ching" + particles + chat broadcast.
-  Optional MiniVault gauge line (price + health factor). **No Ledgermind
+  Optional MiniVault gauge line (price + health factor). **No Handsel
   server-side changes needed.**
 - **v2 — Agent village.** One villager/NPC per agent with a floating credit-score
   + balance hologram; a "requester" and "worker" NPC animate a payment (item
@@ -43,7 +43,7 @@ instructions**; the human drops it into a Paper server's `plugins/` and records.
   endpoint (see §4 — `/api/world` or reuse `/world` data source).
 - **v3 — Mineflayer puppets (separate Node project).** Bots that physically walk
   to the job board / bank driven by the real economy events (Option "puppet" —
-  decisions come from Ledgermind, not per-bot LLMs). Highest production value,
+  decisions come from Handsel, not per-bot LLMs). Highest production value,
   weeks of work. Out of scope here; note only.
 
 ---
@@ -52,7 +52,7 @@ instructions**; the human drops it into a Paper server's `plugins/` and records.
 
 ```
 Minecraft (Paper server)
-  └─ LedgermindViz plugin (Java 21)
+  └─ HandselViz plugin (Java 21)
         ├─ async task every N s → HTTP GET (keyless public API)
         ├─ parse JSON (Gson, bundled with Paper)
         └─ hop to main thread → render Display entities + effects
@@ -79,7 +79,7 @@ Base: `https://ai-agent-credit-dashboard.vercel.app`
 ### `GET /api/tasks?status=Open&limit=8`  → open jobs feed
 ```json
 {
-  "type": "LedgermindTaskFeed",
+  "type": "HandselTaskFeed",
   "count": 1,
   "tasks": [
     {
@@ -122,7 +122,7 @@ keyless read, or add a small `GET /api/world/agents` returning `[{name, creditSc
 
 ## 5. Repo decision
 
-Recommended: **separate repo `ledgermind-minecraft`** (heavy unrelated Java/Maven
+Recommended: **separate repo `handsel-minecraft`** (heavy unrelated Java/Maven
 deps, content/experimental, only consumes the public HTTP API → zero coupling).
 The `desktop/` precedent means in-repo `minecraft/` is also acceptable if kept
 isolated (its own Maven build; the Next.js `tsc`/`eslint` gates never touch Java,
@@ -136,7 +136,7 @@ self-contained. This plan's paths assume a project root (repo root or
 
 - `java -version` → OpenJDK 21 ✅
 - `mvn -version` → Maven present ✅ (downloads Paper API from `repo.papermc.io`)
-- Build: `mvn -q -DskipTests package` → `target/LedgermindViz-0.1.0.jar`
+- Build: `mvn -q -DskipTests package` → `target/HandselViz-0.1.0.jar`
 - **Cannot** run a Paper server or record in the sandbox → hand the jar to the
   human. Compile success is the in-session acceptance bar.
 
@@ -150,9 +150,9 @@ self-contained. This plan's paths assume a project root (repo root or
   README.md
   src/main/resources/plugin.yml
   src/main/resources/config.yml
-  src/main/java/com/ledgermind/viz/
-    LedgermindVizPlugin.java   # main: config, scheduler, /lm command
-    LedgermindClient.java      # HTTP + Gson parsing (async-safe)
+  src/main/java/com/handsel/viz/
+    HandselVizPlugin.java   # main: config, scheduler, /lm command
+    HandselClient.java      # HTTP + Gson parsing (async-safe)
     Job.java                   # record
     JobBoard.java              # Display entities, diff, effects (main-thread)
 ```
@@ -168,8 +168,8 @@ self-contained. This plan's paths assume a project root (repo root or
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>com.ledgermind</groupId>
-  <artifactId>ledgermind-viz</artifactId>
+  <groupId>com.handsel</groupId>
+  <artifactId>handsel-viz</artifactId>
   <version>0.1.0</version>
   <packaging>jar</packaging>
   <properties>
@@ -190,7 +190,7 @@ self-contained. This plan's paths assume a project root (repo root or
     </dependency>
   </dependencies>
   <build>
-    <finalName>LedgermindViz-${project.version}</finalName>
+    <finalName>HandselViz-${project.version}</finalName>
     <plugins>
       <plugin><groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId><version>3.13.0</version></plugin>
@@ -201,20 +201,20 @@ self-contained. This plan's paths assume a project root (repo root or
 
 ### src/main/resources/plugin.yml
 ```yaml
-name: LedgermindViz
+name: HandselViz
 version: 0.1.0
-main: com.ledgermind.viz.LedgermindVizPlugin
+main: com.handsel.viz.HandselVizPlugin
 api-version: '1.21'
-author: Ledgermind
-description: A live in-world job board driven by the real Ledgermind agent-economy API (testnet).
+author: Handsel
+description: A live in-world job board driven by the real Handsel agent-economy API (testnet).
 commands:
   lm:
-    description: Ledgermind visualization controls
+    description: Handsel visualization controls
     usage: "/lm <board|on|off|status>"
-    permission: ledgermind.admin
+    permission: handsel.admin
 permissions:
-  ledgermind.admin:
-    description: Manage the Ledgermind visualization
+  handsel.admin:
+    description: Manage the Handsel visualization
     default: op
 ```
 
@@ -226,17 +226,17 @@ max-jobs: 8
 # board anchor is saved here by /lm board (world, x, y, z)
 ```
 
-### src/main/java/com/ledgermind/viz/Job.java
+### src/main/java/com/handsel/viz/Job.java
 ```java
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 public record Job(String id, String title, double rewardUsd, String status,
                   String verification, String requesterLabel) {}
 ```
 
-### src/main/java/com/ledgermind/viz/LedgermindClient.java
+### src/main/java/com/handsel/viz/HandselClient.java
 ```java
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -252,12 +252,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** All HTTP is keyless GETs to the public API. Safe to call off the main thread. */
-public final class LedgermindClient {
+public final class HandselClient {
     private final String baseUrl;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10)).build();
 
-    public LedgermindClient(String baseUrl) {
+    public HandselClient(String baseUrl) {
         this.baseUrl = baseUrl.replaceAll("/+$", "");
     }
 
@@ -307,9 +307,9 @@ public final class LedgermindClient {
 }
 ```
 
-### src/main/java/com/ledgermind/viz/JobBoard.java
+### src/main/java/com/handsel/viz/JobBoard.java
 ```java
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -345,7 +345,7 @@ public final class JobBoard {
         if (world == null) return List.of();
 
         if (header == null) header = spawn(anchor.clone().add(0, 0.4, 0),
-                AMB + "⛏ " + W + "LEDGERMIND — " + GRY + "live jobs (testnet)");
+                AMB + "⛏ " + W + "HANDSEL — " + GRY + "live jobs (testnet)");
 
         Set<String> nowIds = new HashSet<>();
         for (Job j : jobs) nowIds.add(j.id());
@@ -421,9 +421,9 @@ public final class JobBoard {
 > `world.playSound(loc, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.4f)` for a
 > fill; `Particle.ENCHANT` + `Sound.BLOCK_NOTE_BLOCK_PLING` for a new job.
 
-### src/main/java/com/ledgermind/viz/LedgermindVizPlugin.java
+### src/main/java/com/handsel/viz/HandselVizPlugin.java
 ```java
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Location;
 import org.bukkit.command.Command;
@@ -434,8 +434,8 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.util.List;
 
-public final class LedgermindVizPlugin extends JavaPlugin {
-    private LedgermindClient client;
+public final class HandselVizPlugin extends JavaPlugin {
+    private HandselClient client;
     private JobBoard board;
     private BukkitTask poller;
     private int pollSeconds, maxJobs;
@@ -445,10 +445,10 @@ public final class LedgermindVizPlugin extends JavaPlugin {
         String base = getConfig().getString("base-url", "https://ai-agent-credit-dashboard.vercel.app");
         pollSeconds = getConfig().getInt("poll-seconds", 15);
         maxJobs = getConfig().getInt("max-jobs", 8);
-        client = new LedgermindClient(base);
+        client = new HandselClient(base);
         restoreBoardFromConfig();
         startPolling();
-        getLogger().info("LedgermindViz enabled — polling " + base + " every " + pollSeconds + "s");
+        getLogger().info("HandselViz enabled — polling " + base + " every " + pollSeconds + "s");
     }
 
     @Override public void onDisable() { stopPolling(); if (board != null) board.clear(); }
@@ -485,7 +485,7 @@ public final class LedgermindVizPlugin extends JavaPlugin {
                 getConfig().set("board.world", loc.getWorld().getName());
                 getConfig().set("board.x", loc.getX()); getConfig().set("board.y", loc.getY()); getConfig().set("board.z", loc.getZ());
                 saveConfig();
-                s.sendMessage("§aLedgermind board placed. It updates every " + pollSeconds + "s.");
+                s.sendMessage("§aHandsel board placed. It updates every " + pollSeconds + "s.");
             }
             case "on" -> { startPolling(); s.sendMessage("§apolling on"); }
             case "off" -> { stopPolling(); s.sendMessage("§epolling off"); }
@@ -523,8 +523,8 @@ public final class LedgermindVizPlugin extends JavaPlugin {
    names against 1.21.1 — the compiler names each one).
 3. Wire the `fx()` effects with the anchor's `world`/`loc` (green cha-ching on
    fill, blue ding on new job) and, if desired, broadcast via
-   `getServer().broadcast(net.kyori.adventure.text.Component.text("§a💰 A job was just filled on Ledgermind!"))`.
-4. Confirm `target/LedgermindViz-0.1.0.jar` builds. **That is the session's
+   `getServer().broadcast(net.kyori.adventure.text.Component.text("§a💰 A job was just filled on Handsel!"))`.
+4. Confirm `target/HandselViz-0.1.0.jar` builds. **That is the session's
    done bar** (can't run a server here).
 5. Write `README.md`: how to run — download Paper 1.21.1, `java -jar paper.jar`,
    drop the jar in `plugins/`, restart, `/lm board`, watch the live jobs.
@@ -533,7 +533,7 @@ public final class LedgermindVizPlugin extends JavaPlugin {
 ## 11. v1 acceptance (human, on a real server)
 - `/lm board` places a hologram board; within ~15s real open jobs appear as
   `#id  $reward  title`.
-- Posting/claiming a job on Ledgermind changes the board within a poll; a filled
+- Posting/claiming a job on Handsel changes the board within a poll; a filled
   job triggers the green effect + broadcast.
 
 ---
@@ -588,7 +588,7 @@ export async function GET(request: Request): Promise<Response> {
     .orderBy(desc(agent.creditScore))
     .limit(limit)
   return Response.json({
-    type: 'LedgermindAgents',
+    type: 'HandselAgents',
     count: rows.length,
     agents: rows.map((r) => ({
       name: r.name,
@@ -601,7 +601,7 @@ export async function GET(request: Request): Promise<Response> {
 
 **Response:**
 ```json
-{ "type": "LedgermindAgents", "count": 2,
+{ "type": "HandselAgents", "count": 2,
   "agents": [
     { "name": "Claude-Voice", "creditScore": 715, "creditRating": "A-" },
     { "name": "Worker-0d4h", "creditScore": 0, "creditRating": "unrated" } ] }
@@ -637,13 +637,13 @@ gone, update score/rating (particle burst when score rises).
 
 ```java
 // Agent.java
-package com.ledgermind.viz;
+package com.handsel.viz;
 public record Agent(String name, double creditScore, String creditRating) {}
 ```
 
 ```java
 // AgentNpc.java  (one villager + hologram; MAIN THREAD ONLY)
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -704,7 +704,7 @@ public final class AgentNpc {
 
 ```java
 // AgentVillage.java  (layout + diff; MAIN THREAD ONLY)
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Location;
 import java.util.HashMap;
@@ -770,7 +770,7 @@ When the v1 board detects a **filled job**, resolve who paid whom and animate it
 
 ## 18. v2 wiring & gotchas
 
-- Extend `LedgermindClient` with `List<Agent> fetchAgents(int limit)` hitting
+- Extend `HandselClient` with `List<Agent> fetchAgents(int limit)` hitting
   `/api/world/agents?limit=N` (same Gson pattern as `fetchOpenJobs`).
 - The plugin's async poll now fetches BOTH jobs and agents; the sync render hop
   calls `board.render(...)` and `village.render(agents)`.
@@ -786,7 +786,7 @@ When the v1 board detects a **filled job**, resolve who paid whom and animate it
 ## 19. v2 acceptance (human, on a real server)
 - `/lm village` spawns a plaza; within a poll, the top agents appear as villagers
   with `name` + `score · rating` holograms, colored by credit tier.
-- An agent's score rising (after it completes work on Ledgermind) triggers a
+- An agent's score rising (after it completes work on Handsel) triggers a
   green particle burst on its NPC within a poll.
 - A job filling triggers a payment animation (gold arc + cha-ching + broadcast).
 

@@ -1,18 +1,18 @@
-name: LedgermindViz
+name: HandselViz
 version: ${project.version}
-main: com.ledgermind.viz.LedgermindVizPlugin
+main: com.handsel.viz.HandselVizPlugin
 api-version: '1.21'
-author: Ledgermind
-description: A live job board + agent village driven by the real Ledgermind agent-economy API (testnet).
+author: Handsel
+description: A live job board + agent village driven by the real Handsel agent-economy API (testnet).
 commands:
   lm:
-    description: Ledgermind visualization controls
+    description: Handsel visualization controls
     usage: "/lm help — 전체 명령 보기"
-    permission: ledgermind.use
+    permission: handsel.use
 permissions:
-  ledgermind.use:
+  handsel.use:
     description: Look at the live economy and work a job (everyone)
     default: true
-  ledgermind.admin:
+  handsel.admin:
     description: Place the board/village/rig and control mining
     default: op

@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -19,15 +19,15 @@ import org.bukkit.scheduler.BukkitTask;
 import java.util.List;
 import java.util.Locale;
 
-public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor, Listener {
+public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, Listener {
 
     private static final List<String> SUBS =
             List.of("help", "board", "village", "account", "rig", "mine", "take", "answer", "submit",
                     "duel", "wallet", "top", "jobs", "on", "off", "status", "reload", "clear");
 
-    private LedgermindClient client;
+    private HandselClient client;
     private JobBoard board;
-    /** One town per Ledgermind account, road-linked into a city. */
+    /** One town per Handsel account, road-linked into a city. */
     private final List<Town> towns = new java.util.ArrayList<>();
     private Miner miner;
     private MinerRig rig;
@@ -65,7 +65,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         startPolling();
         startLife();
         if (miner != null && getConfig().getBoolean("mining.autostart", false)) startMining();
-        getLogger().info("LedgermindViz enabled - polling " + client.baseUrl()
+        getLogger().info("HandselViz enabled - polling " + client.baseUrl()
                 + " every " + pollSeconds + "s");
     }
 
@@ -108,7 +108,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         getServer().getScheduler().runTaskLater(this, () -> {
             if (!p.isOnline()) return;
             p.sendMessage("");
-            p.sendMessage("§6§l⛏ LEDGERMIND §r§7— 마인크래프트 속 살아있는 AI 에이전트 경제");
+            p.sendMessage("§6§l⛏ HANDSEL §r§7— 마인크래프트 속 살아있는 AI 에이전트 경제");
             p.sendMessage("§8§m                                        ");
             p.sendMessage("§f§l처음 오셨나요? 이 순서로 해보세요:");
             p.sendMessage("§e①§f 마을을 걸어보세요 §7— 주민 = AI 에이전트. 지금 일하러 돌아다녀요");
@@ -125,7 +125,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         }, 40L);
     }
 
-    /** Right-click an agent villager → its live Ledgermind profile in chat. */
+    /** Right-click an agent villager → its live Handsel profile in chat. */
     @EventHandler
     public void onClickAgent(PlayerInteractEntityEvent e) {
         for (Town t : towns) {
@@ -216,7 +216,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         maxAgents = Math.max(1, Math.min(64, getConfig().getInt("max-agents", 12)));
         showVault = getConfig().getBoolean("show-vault", true);
         broadcastFills = getConfig().getBoolean("broadcast-fills", true);
-        client = new LedgermindClient(base);
+        client = new HandselClient(base);
         loadMiner();
     }
 
@@ -379,9 +379,9 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 }
                 if (result != null && getConfig().getBoolean("mining.broadcast", true)) {
                     getServer().broadcast(result.success()
-                            ? Component.text("⛏ Ledgermind: mined a task in " + result.seconds()
+                            ? Component.text("⛏ Handsel: mined a task in " + result.seconds()
                                     + "s - " + result.taskLine(), NamedTextColor.GREEN)
-                            : Component.text("⛏ Ledgermind: task failed - " + result.error(),
+                            : Component.text("⛏ Handsel: task failed - " + result.error(),
                                     NamedTextColor.RED));
                 }
             });
@@ -436,9 +436,9 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
         if (rig != null) { rig.doneFx(r.success()); rig.render(miner, lastWalletLine); }
         if (getConfig().getBoolean("mining.broadcast", true)) {
             getServer().broadcast(r.success()
-                    ? Component.text("⛏ Ledgermind: 제출 완료 (" + r.seconds() + "s) - "
+                    ? Component.text("⛏ Handsel: 제출 완료 (" + r.seconds() + "s) - "
                             + r.taskLine() + " " + suffix, NamedTextColor.GREEN)
-                    : Component.text("⛏ Ledgermind: 제출 실패 - " + r.error(), NamedTextColor.RED));
+                    : Component.text("⛏ Handsel: 제출 실패 - " + r.error(), NamedTextColor.RED));
         }
     }
 
@@ -451,7 +451,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     }
 
     private void broadcastFill(Job job) {
-        getServer().broadcast(Component.text("⚙ Ledgermind: job #" + job.id()
+        getServer().broadcast(Component.text("⚙ Handsel: job #" + job.id()
                         + " (" + usd(job.rewardUsd()) + ") was just filled - "
                         + shorten(job.title()),
                 NamedTextColor.GREEN));
@@ -543,7 +543,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             new TownBuilder(canvas).build(loc);
             if (getConfig().getBoolean("build.spectacle", true)) spectacle = new Spectacle(this, loc);
         }
-        LedgermindClient.Token token = LedgermindClient.decodeToken(tokenStr);
+        HandselClient.Token token = HandselClient.decodeToken(tokenStr);
         String name = label != null ? label : (token != null ? shorten(token.agentId()) : "글로벌");
         Town town = new Town(name, village, spectacle, token);
         towns.add(town);
@@ -651,8 +651,8 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
 
     /** The full custom-command reference, filtered by permission. */
     private void sendHelp(CommandSender s) {
-        boolean admin = s.hasPermission("ledgermind.admin");
-        s.sendMessage("§6§l⛏ LedgermindViz §r§7— 마인크래프트 속 AI 에이전트 경제 §8v" + getPluginMeta().getVersion());
+        boolean admin = s.hasPermission("handsel.admin");
+        s.sendMessage("§6§l⛏ HandselViz §r§7— 마인크래프트 속 AI 에이전트 경제 §8v" + getPluginMeta().getVersion());
         s.sendMessage("§f처음이라면: §a/lm jobs §7→ §a/lm take <번호> §7→ §a/lm answer <답> §7→ §a/lm submit");
         s.sendMessage("§8누구나 쓸 수 있는 명령");
         s.sendMessage("§e/lm jobs §8[n] §7— 열린 일감 목록 (받으려면 아래 take)");
@@ -679,7 +679,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
     @Override
     public boolean onCommand(CommandSender s, Command c, String label, String[] a) {
         if (a.length > 0 && ADMIN_SUBS.contains(a[0].toLowerCase(Locale.ROOT))
-                && !s.hasPermission("ledgermind.admin")) {
+                && !s.hasPermission("handsel.admin")) {
             s.sendMessage("§c그 명령은 관리자(OP)만 쓸 수 있어요.");
             s.sendMessage("§7쓸 수 있는 것: §f/lm take, /lm submit, /lm top, /lm jobs, /lm wallet, /lm status");
             return true;
@@ -703,7 +703,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                 }
                 saveBoardLocation(loc);
                 startPolling();
-                s.sendMessage("§aLedgermind board placed. It updates every " + pollSeconds + "s.");
+                s.sendMessage("§aHandsel board placed. It updates every " + pollSeconds + "s.");
             }
             case "village" -> {
                 if (!(s instanceof Player p)) {
@@ -733,7 +733,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                         }
                         String acctLabel = a[2];
                         String token = a[3];
-                        if (LedgermindClient.decodeToken(token) == null) {
+                        if (HandselClient.decodeToken(token) == null) {
                             s.sendMessage("§c토큰이 올바르지 않습니다. 대시보드에서 다시 복사하세요.");
                             return true;
                         }
@@ -805,7 +805,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             case "mine" -> {
                 if (miner == null) {
                     s.sendMessage("§eNo miner configured. Put a 'Connect a local worker' token");
-                    s.sendMessage("§ein plugins/LedgermindViz/config.yml as §fmining.token§e, then §f/lm reload§e.");
+                    s.sendMessage("§ein plugins/HandselViz/config.yml as §fmining.token§e, then §f/lm reload§e.");
                     s.sendMessage("§8Get one at " + client.baseUrl() + " -> your agent -> Connect a local worker");
                     return true;
                 }
@@ -985,7 +985,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
                         return;
                     }
                     getServer().getScheduler().runTask(this, () -> {
-                        s.sendMessage("§6⛏ §fLedgermind — top agents");
+                        s.sendMessage("§6⛏ §fHandsel — top agents");
                         int i = 0;
                         for (Agent ag : agents) {
                             s.sendMessage("§7" + (++i) + ". §f" + ag.name()
@@ -999,7 +999,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
             }
             case "jobs" -> {
                 int n = a.length > 1 ? clamp(a[1], 5) : 5;
-                s.sendMessage("§6⛏ §fLedgermind — open jobs");
+                s.sendMessage("§6⛏ §fHandsel — open jobs");
                 showJobs(s, n);
             }
             case "on" -> {
@@ -1064,7 +1064,7 @@ public final class LedgermindVizPlugin extends JavaPlugin implements TabExecutor
 
     @Override
     public List<String> onTabComplete(CommandSender s, Command c, String label, String[] a) {
-        boolean admin = s.hasPermission("ledgermind.admin");
+        boolean admin = s.hasPermission("handsel.admin");
         if (a.length == 1) {
             String prefix = a[0].toLowerCase(Locale.ROOT);
             return SUBS.stream()

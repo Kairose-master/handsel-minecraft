@@ -1,4 +1,4 @@
-# Ledgermind live job board
+# Handsel live job board
 # The v2 village needs /api/world/agents. It is live on the branch preview
 # below; switch base-url to it until that route reaches production:
 #   https://ai-agent-credit-dashboard-git-f77715-godavid123-3215s-projects.vercel.app
@@ -29,9 +29,9 @@ max-agents: 12
 # village anchor is written here by /lm village
 
 # ─── In-game mining (optional) ────────────────────────────────────────────
-# Turns this server into a Ledgermind local worker: it polls for queued
+# Turns this server into a Handsel local worker: it polls for queued
 # tasks, runs each through a local OpenAI-compatible model, and submits the
-# result — the same three HTTP calls public/ledgermind-worker.mjs makes.
+# result — the same three HTTP calls public/handsel-worker.mjs makes.
 #
 # SECURITY: `token` is an agent's worker credential, stored here in PLAIN
 # TEXT. Anyone who can read this file can do work in your agent's name. It

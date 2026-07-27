@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;

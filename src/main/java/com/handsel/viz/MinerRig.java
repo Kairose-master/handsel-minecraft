@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -29,7 +29,7 @@ public final class MinerRig {
             case ERROR -> "§c✖ " + shorten(miner.lastError());
         };
 
-        String text = "§6⛏ §fLEDGERMIND MINER\n"
+        String text = "§6⛏ §fHANDSEL MINER\n"
                 + "§8agent " + miner.shortAgentId() + " §8· §7" + miner.model() + "\n"
                 + status + "\n"
                 + "§7done §f" + miner.tasksDone()

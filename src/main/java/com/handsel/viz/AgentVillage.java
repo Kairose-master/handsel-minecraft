@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -83,7 +83,7 @@ public final class AgentVillage {
     }
 
     /**
-     * Route NPCs by their REAL Ledgermind status, turning the town into a live
+     * Route NPCs by their REAL Handsel status, turning the town into a live
      * diorama of the marketplace: the requester of an open bounty stands at the
      * board kiosk (they've put work out and are waiting), the worker on an
      * in-progress job stands at the workshop, and everyone else drifts home.
@@ -134,7 +134,7 @@ public final class AgentVillage {
     /** The §15 "BANK" marker at the head of the plaza, carrying the vault gauge. */
     private void renderBank(String vaultText) {
         Location loc = center.clone().add(0, 2.6, 0);
-        String text = "§6🏦 §fLEDGERMIND BANK\n§8credit · lending · escrow"
+        String text = "§6🏦 §fHANDSEL BANK\n§8credit · lending · escrow"
                 + (vaultText != null ? "\n§b" + vaultText : "");
         if (bank == null || bank.isDead()) {
             World world = loc.getWorld();

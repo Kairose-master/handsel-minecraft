@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -13,7 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The always-on right-side panel ("자막") — a live read of the Ledgermind
+ * The always-on right-side panel ("자막") — a live read of the Handsel
  * economy that every player sees without running a command: the top agents,
  * open-job count, vault price, and the viewer's own rank/earnings when they're
  * mining. Rebuilt each poll on the main thread from data the poller already
@@ -33,7 +33,7 @@ public final class Scoreboard {
     public Scoreboard() {
         board = Bukkit.getScoreboardManager().getNewScoreboard();
         objective = board.registerNewObjective("lm", Criteria.DUMMY,
-                Component.text("⛏ LEDGERMIND", NamedTextColor.GOLD));
+                Component.text("⛏ HANDSEL", NamedTextColor.GOLD));
         objective.setDisplaySlot(DisplaySlot.SIDEBAR);
     }
 

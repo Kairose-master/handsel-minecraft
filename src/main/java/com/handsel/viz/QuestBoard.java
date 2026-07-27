@@ -1,4 +1,4 @@
-package com.ledgermind.viz;
+package com.handsel.viz;
 
 import org.bukkit.Color;
 import org.bukkit.FireworkEffect;
@@ -68,11 +68,11 @@ public final class QuestBoard {
     private ItemStack writeBook(List<Job> jobs, String vaultLine) {
         ItemStack book = new ItemStack(Material.WRITTEN_BOOK);
         BookMeta meta = (BookMeta) book.getItemMeta();
-        meta.setTitle("Ledgermind Jobs");
-        meta.setAuthor("Ledgermind");
+        meta.setTitle("Handsel Jobs");
+        meta.setAuthor("Handsel");
 
         List<String> pages = new ArrayList<>();
-        StringBuilder cover = new StringBuilder("§0§lLEDGERMIND\n§8열린 일감 " + jobs.size() + "건\n\n");
+        StringBuilder cover = new StringBuilder("§0§lHANDSEL\n§8열린 일감 " + jobs.size() + "건\n\n");
         if (vaultLine != null) cover.append("§8").append(vaultLine).append("\n\n");
         cover.append("§8오른쪽 페이지에서\n각 일감의 상세를\n확인하세요.\n\n§8(테스트넷)");
         pages.add(cover.toString());
