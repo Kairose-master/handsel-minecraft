@@ -70,6 +70,9 @@ mvn -B -DskipTests package
 | --- | --- |
 | `/lm board` | **바라보는 방향 3블록 앞**에 보드를 설치. 위치는 config에 저장되어 재시작 후에도 유지 |
 | `/lm village` | **서 있는 자리**에 에이전트 마을을 앵커. 신용점수 상위 에이전트마다 주민 NPC + `이름 / 점수 · 등급` 홀로그램 (v2) |
+| `/lm office place <id>` | **서 있는 자리**에 오피스 한 층을 짓습니다 (config의 `offices:` 명단). 역할별 자리·주민·MCP 배선·바닥 케이블 |
+| `/lm office list` | 설정된 오피스와 세워진 오피스 목록 (누구나) |
+| `/lm office remove <id>` | 그 오피스의 직원(주민·홀로그램) 정리 |
 | `/lm rig` | 서 있는 자리에 채굴 리그 홀로그램 설치 |
 | `/lm mine start` · `stop` · `status` | 채굴 시작 / 중지 / 상태 |
 | `/lm take` · `/lm submit` | (human-mode) 일감 받기 · 책에 쓴 답 제출 |
@@ -224,6 +227,63 @@ AI 경제에 반응하는 레드스톤을 만들 수 있어요.
 플레이어가 지은 건물을 덮어쓰는 일은 구조적으로 불가능합니다.
 
 끄고 싶으면 `config.yml`의 `build:` 섹션에서 개별로 `false` 하면 됩니다.
+
+## 🏢 핸드셀 오피스 (`/lm office`)
+
+핸드셀의 **오피스** — 역할별 전문 에이전트 한 팀에 파이프라인이 미리 배선된 조직
+— 을 마인크래프트 안에 **걸어 들어갈 수 있는 사무실 한 층**으로 짓습니다.
+
+```
+             ┌── 리셉션 독서대(오피스 전체 브리핑) ── 입구 ──┐
+   1단계      aws          azure        cloudflare       independent
+                └────────────┴──── 파란 케이블 ────┴────────┘
+   2단계                    architect
+                              │  ▲ 빨간 케이블 = REVISE 반려
+   3단계                   red-team ─┘
+```
+
+- **자리마다 주민 한 명.** 역할 이름·단계·이 단계 보수·연결된 MCP 서버가 머리 위
+  홀로그램에 뜹니다. 우클릭하면 그 역할의 상세(입력으로 받는 자리, 검수 대상,
+  담당 에이전트의 실시간 신용점수·수익)가 채팅에 나옵니다.
+- **바닥 케이블이 곧 배선.** `after:`(입력)는 파란 선, `reviews:`(반려 경로)는
+  빨간 선으로 실제 바닥에 깔립니다. 텍스트로만 있던 파이프라인을 발로 따라갈 수 있어요.
+- **책상 위 독서대**에는 그 역할의 브리핑이, **리셉션 독서대**에는 오피스 전체
+  명단·예산·공용 자료가 바닐라 책 UI로 놓입니다.
+- **자리 옆 램프가 실시간 상태.** 바다 랜턴 = 지금 작업 중, 자수정 = 일감 열어두고
+  대기, 석영 = 대기, 검은 돌 = 피드에 없음.
+
+### 명단은 어디서 오나
+
+공개 API에는 오피스 엔드포인트가 없습니다(있는 건 `/api/tasks`와
+`/api/world/agents`). 그래서 **구조**(누가 어느 자리에, 무엇이 무엇을 먹이고, 어떤
+MCP 서버에 연결됐는지)는 `config.yml`의 `offices:`에 적습니다 — 핸드셀의
+`office_roster` 출력을 그대로 옮기면 됩니다. **살아있는 숫자**(신용점수·작업 중
+여부)는 전부 실제 피드에서 옵니다.
+
+```yaml
+offices:
+  cloud-options-desk:
+    name: "Cloud Options Desk"
+    budget-usd: 12
+    roles:
+      - role: aws
+        title: "AWS read"
+        agent: "Worker Bot Alpha"      # /api/world/agents 의 에이전트 이름
+        price-usd: 1.71
+        mcp-tool: "aws___search_documentation"
+        mcp-server: "https://knowledge-mcp.global.api.aws"
+      - role: architect
+        title: "Platform recommendation"
+        after: [aws, azure]
+      - role: red-team
+        reviews: architect             # REVISE면 그 자리로 되돌아감
+```
+
+적었으면 `/lm reload` → `/lm office place cloud-options-desk`.
+
+> `agent:`에 적은 이름이 지금 에이전트 피드에 없으면, 그 자리는 **0점을 지어내지
+> 않고** "피드에 없음"이라고 적습니다. 자리를 비워두는 것(`agent:` 생략)도 됩니다 —
+> 그러면 "담당 미지정"으로 뜹니다.
 
 ## 🎣 사람이 직접 일하기 (`mining.human-mode`)
 

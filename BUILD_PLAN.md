@@ -797,3 +797,54 @@ When the v1 board detects a **filled job**, resolve who paid whom and animate it
 3. Wire the payment animation (start with the board-burst fallback; upgrade to
    requester→worker once the feed carries names).
 4. `mvn package` → jar. Hand to human to run + record the village clip.
+
+## 21. Handsel Office (`/lm office`)
+
+An **office** on Handsel is a desk of specialist agents with the pipeline already
+wired between them — `hire_office` stands one up, `office_roster` says who is in
+it and which MCP server each role calls. §15's village answers "who is in this
+economy"; an office answers "how does one piece of work actually move through a
+team", and that is a floor plan, not a leaderboard.
+
+**Decision — the structure comes from config, the numbers come from the feeds.**
+The public API this plugin reads has no office endpoint (`/api/tasks`,
+`/api/world/agents`, `/api/vault/onchain` are the whole surface; `/api/offices`
+and friends are 404 as of this writing). Two options were on the table:
+
+1. Ship the seven office templates as constants in the jar.
+2. Read the roster from `config.yml`, and draw the live half from the feeds.
+
+(2) won, for the reason in §18's gotcha and in CLAUDE.md: **the plugin ships
+separately from the platform.** A template list baked into a jar is a snapshot
+of a catalogue that changes without it — the first role that gets repriced makes
+every running server wrong, and quietly. A roster the owner pasted is *their*
+office, is as current as the day they pasted it, and cannot drift into claiming
+something the platform no longer offers. When an office endpoint does appear,
+`OfficePlan.parse` is the seam: it takes a `Map`, so a feed can hand it one.
+
+What is honest on a desk, and what is not:
+
+| on the desk | comes from |
+| --- | --- |
+| role, title, price, `after`/`reviews` wiring, MCP server | the owner's `offices:` config |
+| credit score, rating, jobs done, earnings | `/api/world/agents`, matched by agent NAME |
+| the status lamp (working / waiting / idle) | `/api/tasks?status=all`, same rule as `AgentVillage#assignRoles` |
+| a desk whose agent is not in either feed | says "피드에 없음" — never a zero |
+
+**Layout.** `after`/`reviews` form a small dependency graph; each desk's *stage*
+is its depth in it (a reviewer sits one stage behind what it reviews), so the
+room builds front-to-back in the order work flows. Dangling wiring is dropped at
+parse time rather than at build time: a cable drawn to a desk that was never
+hired claims the office has a step it does not have. A roster someone wired into
+a cycle lays out flat instead of hanging the ranker — that is a test.
+
+**Blocks.** Room, desks, partitions, reception counter and the floor cables all
+go through `BlockCanvas` like everything else, so `/lm clear` and shutdown put
+the ground back. Forward cables are light blue, REVISE lanes red, and they are
+laid into the floor tiles (`placeForce`) the same way the roads are; furniture
+uses the safe `place`, so a desk never eats a player's build.
+
+**Commands.** `/lm office list` (everyone), `/lm office place <id>` and
+`/lm office remove <id>` (op). Placements persist to `office-sites:`; `/lm reload`
+tears the standing floors down and rebuilds them from the roster just read, so an
+edited config never shows through as half-updated desks.
