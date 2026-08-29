@@ -22,13 +22,17 @@ import java.util.Locale;
 public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, Listener {
 
     private static final List<String> SUBS =
-            List.of("help", "board", "village", "account", "rig", "mine", "take", "answer", "submit",
-                    "duel", "wallet", "top", "jobs", "on", "off", "status", "reload", "clear");
+            List.of("help", "board", "village", "account", "office", "rig", "mine", "take", "answer",
+                    "submit", "duel", "wallet", "top", "jobs", "on", "off", "status", "reload", "clear");
 
     private HandselClient client;
     private JobBoard board;
     /** One town per Handsel account, road-linked into a city. */
     private final List<Town> towns = new java.util.ArrayList<>();
+    /** Offices read from config (`offices:`), by id — the roster, not a placement. */
+    private final java.util.Map<String, Office> officePlans = new java.util.LinkedHashMap<>();
+    /** The offices actually standing in the world. */
+    private final List<OfficeFloor> offices = new java.util.ArrayList<>();
     private Miner miner;
     private MinerRig rig;
     private final BlockCanvas canvas = new BlockCanvas();
@@ -59,6 +63,7 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
         loadSettings();
         restoreBoardFromConfig();
         restoreTownsFromConfig();
+        restoreOfficesFromConfig();
         restoreRigFromConfig();
         setupHud();
         getServer().getPluginManager().registerEvents(this, this);
@@ -76,6 +81,7 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
         if (lifeTask != null) lifeTask.cancel();
         if (tickerTask != null) tickerTask.cancel();
         for (Town t : towns) { if (t.spectacle != null) t.spectacle.allOff(); t.village.clear(); }
+        for (OfficeFloor f : offices) f.clear();
         if (ticker != null) ticker.clear();
         if (scoreboard != null) scoreboard.clear();
         if (board != null) board.clear();
@@ -128,6 +134,14 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
     /** Right-click an agent villager → its live Handsel profile in chat. */
     @EventHandler
     public void onClickAgent(PlayerInteractEntityEvent e) {
+        for (OfficeFloor f : offices) {
+            OfficeDesk desk = f.deskForEntity(e.getRightClicked());
+            if (desk != null) {
+                e.setCancelled(true); // no villager trade UI
+                desk.cardLines().forEach(e.getPlayer()::sendMessage);
+                return;
+            }
+        }
         for (Town t : towns) {
             AgentNpc npc = t.village.npcForEntity(e.getRightClicked());
             if (npc != null) {
@@ -193,6 +207,7 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
                 town.village.tickLife(t);
                 if (town.spectacle != null) town.spectacle.tick(t);
             }
+            for (OfficeFloor f : offices) f.tick(t);
         }, 2L, 2L);
     }
 
@@ -217,6 +232,7 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
         showVault = getConfig().getBoolean("show-vault", true);
         broadcastFills = getConfig().getBoolean("broadcast-fills", true);
         client = new HandselClient(base);
+        loadOfficePlans();
         loadMiner();
     }
 
@@ -244,8 +260,9 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
         long ticks = pollSeconds * 20L;
         poller = getServer().getScheduler().runTaskTimerAsynchronously(this, () -> {
             boolean haveTowns = !towns.isEmpty();
+            boolean haveOffices = !offices.isEmpty();
             boolean needJobs = board != null || scoreboard != null || ticker != null;
-            boolean needAgents = haveTowns || scoreboard != null || ticker != null;
+            boolean needAgents = haveTowns || haveOffices || scoreboard != null || ticker != null;
             if (!needJobs && !needAgents) return; // nothing wants data yet
 
             List<Job> jobs = List.of();
@@ -261,7 +278,9 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
             List<Agent> globalAgents = List.of();
             if (needAgents) {
                 try {
-                    globalAgents = client.fetchAgents(Math.max(maxAgents, 5));
+                    // An office names its agents by hand; they are not necessarily
+                    // near the top of the leaderboard, so ask for a deeper page.
+                    globalAgents = client.fetchAgents(Math.max(maxAgents, haveOffices ? 48 : 5));
                 } catch (Exception e) {
                     getLogger().warning("agent poll failed: " + e.getMessage());
                 }
@@ -279,7 +298,7 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
             }
             // All-status jobs drive every town's live foot traffic (who's working / requesting).
             List<Job> roleJobs = List.of();
-            if (haveTowns) {
+            if (haveTowns || haveOffices) {
                 try {
                     roleJobs = client.fetchJobs("all", 20);
                 } catch (Exception e) {
@@ -308,6 +327,9 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
                     if (!ags.isEmpty()) t.village.render(ags, vault);
                     if (!polledRoleJobs.isEmpty()) t.village.assignRoles(polledRoleJobs);
                 }
+                // Offices run off the same two feeds; lastAgents keeps the last
+                // good roster, so one failed agent poll doesn't blank every desk.
+                for (OfficeFloor f : offices) f.render(lastAgents, polledRoleJobs);
                 if (board == null) return;
                 List<Job> filled = board.render(polledJobs, vault);
                 if (questBoard != null) questBoard.render(polledJobs, vault);
@@ -630,6 +652,98 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
         }
     }
 
+    // --- offices -----------------------------------------------------------
+
+    /**
+     * Read the `offices:` block. An office is a ROSTER, not a placement: the
+     * roles, their prices, what feeds what and which MCP server each one calls,
+     * copied from the owner's own office (the platform's office_roster). The
+     * public API has no office endpoint to poll for it — what it does have is
+     * the agent and task feeds every desk's live half is drawn from.
+     */
+    private void loadOfficePlans() {
+        officePlans.clear();
+        var section = getConfig().getConfigurationSection("offices");
+        if (section == null) return;
+        for (String id : section.getKeys(false)) {
+            var body = section.getConfigurationSection(id);
+            Office office = body == null ? null : OfficePlan.parse(id, body.getValues(false));
+            if (office == null) {
+                getLogger().warning("office '" + id + "' has no usable roles - skipped"
+                        + " (each role needs a `role:` or a `title:`)");
+                continue;
+            }
+            officePlans.put(office.id(), office);
+        }
+        if (!officePlans.isEmpty()) {
+            getLogger().info(officePlans.size() + " office plan(s) loaded from config");
+        }
+    }
+
+    /** Rebuild every office that was standing when the server stopped. */
+    private void restoreOfficesFromConfig() {
+        for (var m : getConfig().getMapList("office-sites")) {
+            String id = m.get("id") == null ? "" : String.valueOf(m.get("id"));
+            Office plan = officePlans.get(id);
+            if (plan == null) {
+                getLogger().warning("saved office '" + id + "' is no longer in config - not rebuilt");
+                continue;
+            }
+            var w = m.get("world") == null ? null : getServer().getWorld(String.valueOf(m.get("world")));
+            if (w == null) {
+                getLogger().warning("saved office '" + id + "' world not found - place it again");
+                continue;
+            }
+            placeOffice(plan, new Location(w, asD(m.get("x")), asD(m.get("y")), asD(m.get("z"))));
+        }
+        if (!offices.isEmpty()) getLogger().info(offices.size() + " office(s) restored");
+    }
+
+    /** Build one office floor at {@code loc} and start showing live data on it. */
+    private OfficeFloor placeOffice(Office plan, Location loc) {
+        OfficeFloor floor = new OfficeFloor(canvas, plan, loc);
+        floor.build();
+        offices.add(floor);
+        // Draw the desks straight away from whatever the last poll knew, so the
+        // room isn't an empty shell until the next one comes round.
+        floor.render(lastAgents, List.of());
+        return floor;
+    }
+
+    private void saveOffices() {
+        var list = new java.util.ArrayList<java.util.Map<String, Object>>();
+        for (OfficeFloor f : offices) {
+            Location c = f.anchor();
+            if (c.getWorld() == null) continue;
+            var m = new java.util.LinkedHashMap<String, Object>();
+            m.put("id", f.id());
+            m.put("world", c.getWorld().getName());
+            m.put("x", c.getX());
+            m.put("y", c.getY());
+            m.put("z", c.getZ());
+            list.add(m);
+        }
+        getConfig().set("office-sites", list);
+        saveConfig();
+    }
+
+    /** How to get an office into the config, for a server that has none yet. */
+    private void sendOfficeSetup(CommandSender s) {
+        s.sendMessage("§7설정된 오피스가 없습니다. §8(config.yml 의 §7offices:§8 항목)");
+        s.sendMessage("§8핸드셀에서 §7office_roster§8 로 내 오피스 명단을 뽑아 그대로 옮겨 적으면 됩니다:");
+        s.sendMessage("§8offices:");
+        s.sendMessage("§8  research-desk:");
+        s.sendMessage("§8    name: \"Research Desk\"");
+        s.sendMessage("§8    roles:");
+        s.sendMessage("§8      - role: researcher");
+        s.sendMessage("§8        title: \"Research\"");
+        s.sendMessage("§8        agent: \"내 에이전트 이름\"");
+        s.sendMessage("§8        price-usd: 2.40");
+        s.sendMessage("§8      - role: editor");
+        s.sendMessage("§8        after: [researcher]");
+        s.sendMessage("§7적은 뒤 §f/lm reload §7→ §f/lm office place <id>");
+    }
+
     private void saveLocation(String key, Location loc) {
         getConfig().set(key + ".world", loc.getWorld().getName());
         getConfig().set(key + ".x", loc.getX());
@@ -662,6 +776,7 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
         s.sendMessage("§e/lm top §8[n] §7— 신용점수 상위 에이전트");
         s.sendMessage("§e/lm wallet §7— 내 채굴 에이전트 지갑 잔고");
         s.sendMessage("§e/lm duel §7— 인간 vs AI 대결 §8(/lm duel <답>, /lm duel stats)");
+        s.sendMessage("§e/lm office §8[list] §7— 핸드셀 오피스 명단 §8(자리·MCP 연결·담당 에이전트)");
         s.sendMessage("§e/lm status §7— 마을·폴링·채굴 상태");
         s.sendMessage("§8우클릭: §7에이전트 = 프로필 · 게시판 = 일감 · 레버 = 풀가동🎆");
         if (admin) {
@@ -669,6 +784,8 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
             s.sendMessage("§c/lm village §8[이름] §7— 글로벌(전체) 마을 세우기");
             s.sendMessage("§c/lm account add <이름> <토큰> §7— 계정별 마을 등록 §8(1마을=1계정, 도로연결)");
             s.sendMessage("§c/lm account list|remove §7— 등록된 계정 마을 목록/제거");
+            s.sendMessage("§c/lm office place <id> §7— 오피스 한 층 짓기 §8(config의 offices:)");
+            s.sendMessage("§c/lm office remove <id> §7— 그 오피스 직원 정리");
             s.sendMessage("§c/lm board §7— 일감 게시판 설치 · §c/lm rig §7— 채굴 리그 설치");
             s.sendMessage("§c/lm mine §fstart|stop|status §7— 채굴 제어");
             s.sendMessage("§c/lm on|off §7— API 폴링 · §c/lm reload §7— config 다시 읽기");
@@ -781,6 +898,78 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
                         s.sendMessage("§f/lm account add <이름> <토큰> §7— 계정 마을 등록");
                         s.sendMessage("§f/lm account list §7— 등록된 마을 목록");
                         s.sendMessage("§f/lm account remove <이름> §7— 마을 제거");
+                    }
+                }
+            }
+            case "office" -> {
+                String sub = a.length > 1 ? a[1].toLowerCase(Locale.ROOT) : "list";
+                boolean writes = sub.equals("place") || sub.equals("remove");
+                if (writes && !s.hasPermission("handsel.admin")) {
+                    s.sendMessage("§c오피스를 세우거나 치우는 건 관리자(OP)만 할 수 있어요.");
+                    s.sendMessage("§7보기만: §f/lm office list");
+                    return true;
+                }
+                switch (sub) {
+                    case "place" -> {
+                        if (!(s instanceof Player p)) {
+                            s.sendMessage("§7서 있는 자리에 사무실이 지어지니 게임 안에서 실행하세요.");
+                            return true;
+                        }
+                        if (officePlans.isEmpty()) { sendOfficeSetup(s); return true; }
+                        if (a.length < 3) {
+                            s.sendMessage("§7사용법: §f/lm office place <id>");
+                            s.sendMessage("§7설정된 오피스: §f" + String.join(", ", officePlans.keySet()));
+                            return true;
+                        }
+                        Office plan = officePlans.get(a[2]);
+                        if (plan == null) {
+                            s.sendMessage("§c'" + a[2] + "' 오피스가 config에 없습니다.");
+                            s.sendMessage("§7설정된 오피스: §f" + String.join(", ", officePlans.keySet()));
+                            return true;
+                        }
+                        for (OfficeFloor f : offices) {
+                            if (f.id().equals(plan.id())) {
+                                s.sendMessage("§c'" + plan.id() + "' 오피스는 이미 세워져 있습니다 "
+                                        + "§7(옮기려면 먼저 §f/lm office remove " + plan.id() + "§7)");
+                                return true;
+                            }
+                        }
+                        OfficeFloor floor = placeOffice(plan, p.getLocation().clone());
+                        saveOffices();
+                        startPolling();
+                        s.sendMessage("§a'" + plan.name() + "' 오피스를 세웠습니다 §7("
+                                + plan.desks().size() + "자리 · " + plan.stages() + "단계)");
+                        s.sendMessage("§7바닥의 §b파란 선§7이 일의 흐름, §c빨간 선§7이 반려(REVISE) 경로입니다.");
+                        s.sendMessage("§7자리의 주민을 §a우클릭§7하면 역할·MCP 연결·담당 에이전트를 봅니다.");
+                        s.sendMessage("§8" + floor.summaryLine());
+                    }
+                    case "remove" -> {
+                        if (a.length < 3) { s.sendMessage("§7사용법: §f/lm office remove <id>"); return true; }
+                        OfficeFloor found = null;
+                        for (OfficeFloor f : offices) if (f.id().equalsIgnoreCase(a[2])) { found = f; break; }
+                        if (found == null) { s.sendMessage("§c'" + a[2] + "' 오피스는 세워져 있지 않습니다."); return true; }
+                        found.clear();
+                        offices.remove(found);
+                        saveOffices();
+                        s.sendMessage("§e'" + found.id() + "' 오피스의 직원을 내보냈습니다 "
+                                + "§7(건물 블록은 §f/lm clear§7 로 한 번에 원상복구)");
+                    }
+                    default -> {
+                        if (officePlans.isEmpty()) { sendOfficeSetup(s); return true; }
+                        s.sendMessage("§6🏢 §f핸드셀 오피스 §8— config에 설정된 " + officePlans.size() + "곳");
+                        for (Office o : officePlans.values()) {
+                            boolean placed = offices.stream().anyMatch(f -> f.id().equals(o.id()));
+                            s.sendMessage("§8· §f" + o.name() + " §8(" + o.id() + ") §7"
+                                    + o.desks().size() + "자리 · " + o.stages() + "단계"
+                                    + (placed ? " §a[세워짐]" : " §8[미설치]"));
+                        }
+                        if (!offices.isEmpty()) {
+                            s.sendMessage("§7세워진 오피스");
+                            for (OfficeFloor f : offices) s.sendMessage("§8· " + f.summaryLine());
+                        }
+                        if (s.hasPermission("handsel.admin")) {
+                            s.sendMessage("§c/lm office place <id> §7— 서 있는 자리에 세우기 §8· §c/lm office remove <id>");
+                        }
                     }
                 }
             }
@@ -1015,12 +1204,14 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
                 for (Town t : towns) npcs += t.village.size();
                 s.sendMessage("§7board=" + (board != null)
                         + " towns=" + towns.size() + " (" + npcs + " npcs)"
+                        + " offices=" + offices.size() + "/" + officePlans.size()
                         + " polling=" + (poller != null)
                         + " every=" + pollSeconds + "s"
                         + " miner=" + (miner == null ? "none" : miner.state().toString())
                         + " url=" + client.baseUrl());
                 for (Town t : towns) s.sendMessage("§8  · " + t.label
                         + (t.token != null ? " (계정 전용)" : " (글로벌)"));
+                for (OfficeFloor f : offices) s.sendMessage("§8  · " + f.summaryLine());
             }
             case "reload" -> {
                 // loadSettings() builds a NEW Miner (the token/model may have
@@ -1030,6 +1221,22 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
                 boolean wasMining = minerTask != null;
                 reloadConfig();
                 loadSettings();
+                // A reloaded roster is a different office: drop the standing
+                // floors' staff and rebuild them from the plans just read, so
+                // an edited config never shows through half-updated desks.
+                var placed = new java.util.LinkedHashMap<String, Location>();
+                for (OfficeFloor f : offices) { placed.put(f.id(), f.anchor()); f.clear(); }
+                offices.clear();
+                for (var placement : placed.entrySet()) {
+                    Office plan = officePlans.get(placement.getKey());
+                    if (plan == null) {
+                        getLogger().warning("office '" + placement.getKey()
+                                + "' left the config - not rebuilt");
+                        continue;
+                    }
+                    placeOffice(plan, placement.getValue());
+                }
+                if (!placed.isEmpty()) saveOffices();
                 startPolling();
                 if (wasMining || getConfig().getBoolean("mining.autostart", false)) startMining();
                 s.sendMessage("§aconfig reloaded"
@@ -1038,6 +1245,7 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
             case "clear" -> {
                 if (board != null) board.clear();
                 for (Town t : towns) { if (t.spectacle != null) t.spectacle.allOff(); t.village.clear(); }
+                for (OfficeFloor f : offices) f.clear();
                 if (rig != null) rig.clear();
                 if (questBoard != null) questBoard.clear();
                 if (mineShaft != null) mineShaft.clear();
@@ -1045,6 +1253,7 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
                 canvas.restoreAll();
                 board = null;
                 towns.clear();
+                offices.clear();
                 rawTokens.clear();
                 rig = null;
                 questBoard = null;
@@ -1053,9 +1262,10 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
                 getConfig().set("board", null);
                 getConfig().set("village", null);
                 getConfig().set("villages", null);
+                getConfig().set("office-sites", null);
                 getConfig().set("rig", null);
                 saveConfig();
-                s.sendMessage("§eboard, 모든 마을, rig 제거됨 §7(채굴 자체: /lm mine stop)");
+                s.sendMessage("§eboard, 모든 마을, 오피스, rig 제거됨 §7(채굴 자체: /lm mine stop)");
             }
             default -> { s.sendMessage("§7알 수 없는 명령입니다."); sendHelp(s); }
         }
@@ -1079,10 +1289,17 @@ public final class HandselVizPlugin extends JavaPlugin implements TabExecutor, L
                 return List.of("add", "list", "remove").stream().filter(x -> x.startsWith(pre)).toList();
             if (sub.equals("mine") && admin)
                 return List.of("start", "stop", "status").stream().filter(x -> x.startsWith(pre)).toList();
+            if (sub.equals("office"))
+                return (admin ? List.of("list", "place", "remove") : List.of("list"))
+                        .stream().filter(x -> x.startsWith(pre)).toList();
         }
         if (a.length == 3 && a[0].equalsIgnoreCase("account")
                 && a[1].equalsIgnoreCase("remove") && admin) {
             return towns.stream().map(t -> t.label).filter(java.util.Objects::nonNull).toList();
+        }
+        if (a.length == 3 && a[0].equalsIgnoreCase("office") && admin) {
+            if (a[1].equalsIgnoreCase("place")) return List.copyOf(officePlans.keySet());
+            if (a[1].equalsIgnoreCase("remove")) return offices.stream().map(OfficeFloor::id).toList();
         }
         return List.of();
     }

@@ -85,6 +85,46 @@ build:
   # 발전소·비콘·풀가동 레버 등 화려한 연출
   spectacle: true
 
+# ─── 핸드셀 오피스 (/lm office) ───────────────────────────────────────────
+# 오피스 = 역할별 전문 에이전트 한 층. 각 자리에 주민이 앉고, 바닥의 파란
+# 선이 일의 흐름(after), 빨간 선이 반려(REVISE) 경로입니다.
+#
+# 공개 API에는 오피스 엔드포인트가 없습니다. 그래서 "누가 어느 자리에
+# 앉는가"는 여기에 적고(핸드셀의 office_roster 출력을 그대로 옮기면 됩니다),
+# 자리마다 뜨는 신용점수·작업 상태는 실제 피드에서 가져옵니다. agent 이름이
+# 피드에 없으면 0을 만들어 보여주지 않고 "피드에 없음"이라고 적습니다.
+#
+# 적은 뒤: /lm reload → /lm office place <id> (서 있는 자리에 지어집니다)
+#
+# offices:
+#   cloud-options-desk:
+#     name: "Cloud Options Desk"
+#     tagline: "세 벤더가 각자 문서를 읽고 → 아키텍트가 비교표를 씁니다"
+#     budget-usd: 12
+#     scope: "월 500만 요청 웹훅 리시버, p99 300ms"
+#     source: "https://example.test/brief"      # 이 오피스가 공유하는 자료
+#     roles:
+#       - role: aws
+#         title: "AWS read"
+#         agent: "Worker Bot Alpha"             # /api/world/agents 의 에이전트 이름
+#         price-usd: 1.71
+#         mcp-tool: "aws___search_documentation"
+#         mcp-server: "https://knowledge-mcp.global.api.aws"
+#       - role: azure
+#         title: "Azure read"
+#         price-usd: 1.71
+#       - role: architect
+#         title: "Platform recommendation"
+#         price-usd: 3.43
+#         after: [aws, azure]                   # 이 자리로 들어오는 입력
+#       - role: red-team
+#         title: "Red team"
+#         price-usd: 1.71
+#         reviews: architect                    # REVISE면 그 자리로 되돌아감
+#
+# 세운 오피스의 위치는 아래 office-sites 에 자동으로 기록됩니다.
+# office-sites: []
+
 # ─── 화면 HUD (항상 표시) ─────────────────────────────────────────────────
 hud:
   # 오른쪽 사이드바 실시간 순위판 (자막)
